@@ -1,16 +1,16 @@
-import { defineConfig } from 'oxlint'
+import { defineConfig } from "oxlint";
 
 export default defineConfig({
-  $schema: './node_modules/oxlint/configuration_schema.json',
+  $schema: "./node_modules/oxlint/configuration_schema.json",
 
   ignorePatterns: [
-    '**/node_modules/',
-    'dist/',
-    'quasar.config.*.temporary.compiled*',
-    '.quasar/',
-    'src-cordova/',
-    'src-capacitor/',
-    'src/router/typed-router.d.ts'
+    "**/node_modules/",
+    "dist/",
+    "quasar.config.*.temporary.compiled*",
+    ".quasar/",
+    "src-cordova/",
+    "src-capacitor/",
+    "src/router/typed-router.d.ts"
   ],
 
   options: {
@@ -19,10 +19,10 @@ export default defineConfig({
     maxWarnings: 10
   },
 
-  plugins: ['typescript', 'vue', 'import', 'eslint', 'promise', 'unicorn'],
+  plugins: ["typescript", "vue", "import", "eslint", "promise", "unicorn"],
 
   categories: {
-    correctness: 'error'
+    correctness: "error"
     // style: 'error',
     // pedantic: 'warn',
     // suspicious: 'error',
@@ -35,4 +35,4 @@ export default defineConfig({
   env: {
     builtin: true
   }
-})
+});
