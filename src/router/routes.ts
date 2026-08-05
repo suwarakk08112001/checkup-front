@@ -20,6 +20,10 @@ const routes: RouteRecordRaw[] = [
       {
         path: "expenses",
         component: () => import("@/pages/ExpensePage.vue")
+      },
+      {
+        path: "kits",
+        component: () => import("@/pages/TestkitPage.vue")
       }
       // { path: 'second', component: () => import('@/pages/SecondPage.vue') }
     ]
