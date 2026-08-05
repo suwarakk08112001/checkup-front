@@ -30,8 +30,6 @@
         </div>
 
         <div class="header-actions">
-        
-
           <q-btn flat no-caps class="user-block">
             <q-icon name="account_circle" size="34px" class="user-avatar" />
             <div class="user-text">
@@ -42,15 +40,13 @@
               <div class="user-role">{{ currentUser.role }}</div>
             </div>
           </q-btn>
-<!-- 
+          <!-- 
           <q-badge rounded class="role-pill">
             <q-icon name="verified_user" size="12px" class="q-mr-xs" />
             <span class="role-pill-text">{{ currentUser.badge }}</span>
           </q-badge> -->
 
           <q-separator vertical inset class="header-sep" />
-
-   
 
           <q-btn
             flat
@@ -120,7 +116,11 @@
           <q-item-section v-if="!sidebarMini || sidebarHovered">
             {{ item.label }}
           </q-item-section>
-          <q-tooltip v-if="sidebarMini && !sidebarHovered" anchor="center right" self="center left">
+          <q-tooltip
+            v-if="sidebarMini && !sidebarHovered"
+            anchor="center right"
+            self="center left"
+          >
             {{ item.label }}
           </q-tooltip>
         </q-item>
@@ -142,7 +142,10 @@
     <!-- ===== ALERT DIALOG ===== -->
     <q-dialog v-model="alertDialog.show" persistent>
       <q-card class="alert-card">
-        <div class="alert-icon-wrap" :class="`alert-icon-wrap--${alertDialog.type}`">
+        <div
+          class="alert-icon-wrap"
+          :class="`alert-icon-wrap--${alertDialog.type}`"
+        >
           <div class="alert-icon-ring">
             <q-icon :name="alertDialog.icon" size="34px" color="white" />
           </div>
@@ -162,15 +165,16 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
-<!-- ===== FOOTER ===== -->
-<q-footer bordered class="app-footer">
+    <!-- ===== FOOTER ===== -->
+    <q-footer bordered class="app-footer">
       <div class="footer-content">
         <span class="footer-text">{{ appVersionLabel }}</span>
         <span class="footer-dot">•</span>
-        <span class="footer-text">© {{ currentYear }} ศูนย์ตรวจสุขภาพ โรงพยาบาลปะเหลียน</span>
+        <span class="footer-text"
+          >© {{ currentYear }} ศูนย์ตรวจสุขภาพ โรงพยาบาลปะเหลียน</span
+        >
       </div>
     </q-footer>
-
   </q-layout>
 </template>
 
@@ -220,15 +224,40 @@ const currentUser: CurrentUser = {
 
 // ─── Nav items ──────────────────────────────────────────────────────────────
 const navItems: NavItem[] = [
-  { name: "dashboard", label: "Dashboard สรุปผล", icon: "insights", to: "/dashboard" },
-  { name: "trips", label: "การออกหน่วย (Pre/Post Trip)", icon: "event_available", to: "/trips" },
-  { name: "expenses", label: "ติดตามเบิกจ่าย & แจ้งเตือน", icon: "receipt_long", to: "/expenses" },
-  { name: "kits", label: "ชุดตรวจ & สิทธิ์การรักษา", icon: "medical_information", to: "/kits" },
-  { name: "cost-config", label: "ตั้งค่าต้นทุน (Cost Config)", icon: "tune", to: "/cost-config" }
+  {
+    name: "dashboard",
+    label: "Dashboard สรุปผล",
+    icon: "insights",
+    to: "/dashboard"
+  },
+  {
+    name: "expenses",
+    label: "ติดตามเบิกจ่าย & แจ้งเตือน",
+    icon: "receipt_long",
+    to: "/expenses"
+  },
+  {
+    name: "trips",
+    label: "การออกหน่วย (Pre/Post Trip)",
+    icon: "event_available",
+    to: "/trips"
+  },
+  {
+    name: "kits",
+    label: "ตั้งค่า & ค่าบริการตรวจสุขภาพประจำปีตามสิทธิ์",
+    icon: "medical_information",
+    to: "/kits"
+  },
+  {
+    name: "cost-config",
+    label: "ตั้งค่าต้นทุน (Cost Config)",
+    icon: "tune",
+    to: "/cost-config"
+  }
 ];
 
 const activeTab = ref(
-  navItems.find((n) => route.path.startsWith(n.to))?.name ?? navItems[0].name
+  navItems.find(n => route.path.startsWith(n.to))?.name ?? navItems[0].name
 );
 
 // ─── Sidebar state ──────────────────────────────────────────────────────────
@@ -281,7 +310,12 @@ const ALERT_ICONS: Record<AlertType, string> = {
   info: "info"
 };
 
-function showAlert(type: AlertType, title: string, message: string, btnLabel = "ตกลง"): void {
+function showAlert(
+  type: AlertType,
+  title: string,
+  message: string,
+  btnLabel = "ตกลง"
+): void {
   alertDialog.type = type;
   alertDialog.icon = ALERT_ICONS[type];
   alertDialog.title = title;
@@ -303,7 +337,9 @@ function handleLogout(): void {
 // ─── Footer ─────────────────────────────────────────────────────────────────
 const currentYear = computed(() => new Date().getFullYear());
 const APP_VERSION = "1.0.0";
-const appVersionLabel = computed(() => `ระบบบริหารจัดการต้นทุนและรายได้ฯ v${APP_VERSION}`);
+const appVersionLabel = computed(
+  () => `ระบบบริหารจัดการต้นทุนและรายได้ฯ v${APP_VERSION}`
+);
 </script>
 
 <style lang="scss" scoped>
@@ -415,8 +451,6 @@ $text-muted: #8a94a3;
   flex-wrap: wrap;
 }
 
-
-
 .user-block {
   display: flex;
   align-items: center;
@@ -464,7 +498,6 @@ $text-muted: #8a94a3;
   font-size: 0.72rem;
   padding: 5px 12px;
 }
-
 
 .logout-btn {
   color: #4b5563;
