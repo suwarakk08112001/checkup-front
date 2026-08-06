@@ -31,16 +31,17 @@
 
         <div class="header-actions">
           <q-btn flat no-caps class="user-block">
-            <q-icon name="account_circle" size="34px" class="user-avatar" />
+            <!-- <q-icon name="account_circle" size="34px" class="user-avatar" /> -->
             <div class="user-text">
               <div class="user-name">
                 {{ currentUser.name }}
-                <q-icon name="expand_more" size="16px" />
+                <!-- <q-icon name="expand_more" size="16px" /> -->
               </div>
               <div class="user-role">{{ currentUser.role }}</div>
             </div>
           </q-btn>
           <!-- 
+         
           <q-badge rounded class="role-pill">
             <q-icon name="verified_user" size="12px" class="q-mr-xs" />
             <span class="role-pill-text">{{ currentUser.badge }}</span>
@@ -54,8 +55,8 @@
             round
             icon="logout"
             class="logout-btn"
-            href="/"
-            @click="handleLogout"
+            href="/login"
+            @click.prevent="handleLogout"
           />
         </div>
       </div>
@@ -116,6 +117,7 @@
           <q-item-section v-if="!sidebarMini || sidebarHovered">
             {{ item.label }}
           </q-item-section>
+
           <q-tooltip
             v-if="sidebarMini && !sidebarHovered"
             anchor="center right"
@@ -165,6 +167,7 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
     <!-- ===== FOOTER ===== -->
     <q-footer bordered class="app-footer">
       <div class="footer-content">
@@ -228,7 +231,7 @@ const navItems: NavItem[] = [
     name: "dashboard",
     label: "Dashboard สรุปผล",
     icon: "insights",
-    to: "/dashboard"
+    to: "/"
   },
   {
     name: "expenses",
@@ -256,10 +259,15 @@ const navItems: NavItem[] = [
   }
 ];
 
-const activeTab = ref(
-  navItems.find(n => route.path.startsWith(n.to))?.name ?? navItems[0].name
-);
-
+// const activeTab = ref(
+//   navItems.find(n => route.path.startsWith(n.to))?.name ?? navItems[0].name
+// );
+const activeTab = computed(() => {
+  const match = navItems
+    .filter(n => route.path === n.to || route.path.startsWith(n.to + "/"))
+    .sort((a, b) => b.to.length - a.to.length)[0];
+  return match?.name ?? navItems[0].name;
+});
 // ─── Sidebar state ──────────────────────────────────────────────────────────
 // Starts open+expanded on desktop, closed (overlay) on mobile — same
 // breakpoint logic as before, now paired with a mini/hover-expand mode
@@ -283,7 +291,6 @@ function onSidebarHover(state: boolean): void {
 }
 
 function goTo(item: NavItem): void {
-  activeTab.value = item.name;
   router.push(item.to);
 
   // On mobile the drawer overlays the page, so close it after picking
@@ -330,8 +337,11 @@ defineExpose({ showAlert });
 // Actual sign-out (clearing tokens, calling the API, etc.) is delegated to
 // the parent via the "logout" emit, same as the original layout — this
 // component only owns its own UI state.
-function handleLogout(): void {
-  emit("logout");
+// function handleLogout(): void {
+//   emit("logout");
+// }
+async function handleLogout() {
+  router.push("/login");
 }
 
 // ─── Footer ─────────────────────────────────────────────────────────────────
@@ -460,9 +470,9 @@ $text-muted: #8a94a3;
   min-width: 0;
 }
 
-.user-avatar {
-  color: #9aa4b2;
-}
+// .user-avatar {
+//   color: #9aa4b2;
+// }
 
 .user-text {
   text-align: left;
@@ -613,9 +623,9 @@ $text-muted: #8a94a3;
     font-size: 0.85rem;
   }
 
-  .user-avatar {
-    font-size: 28px !important;
-  }
+  // .user-avatar {
+  //   font-size: 28px !important;
+  // }
 }
 
 // ─── SIDEBAR ────────────────────────────────────────────────────────────────

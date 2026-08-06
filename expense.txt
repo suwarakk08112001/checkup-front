@@ -104,14 +104,11 @@
               <div class="alert-item-main">
                 <div class="alert-item-title">{{ c.title }}</div>
                 <div class="alert-item-sub">
-                  ส่งเคลมเมื่อ: {{ c.claimDate }} • ค้างชำระ:
-                  {{ c.overdueDays }} วัน
+                  ส่งเคลมเมื่อ: {{ c.claimDate }} • ค้างชำระ: {{ c.overdueDays }} วัน
                 </div>
               </div>
               <div class="alert-item-side">
-                <span class="alert-item-amount">{{
-                  fmtBaht(c.claimAmount - c.receivedAmount)
-                }}</span>
+                <span class="alert-item-amount">{{ fmtBaht(c.claimAmount - c.receivedAmount) }}</span>
                 <q-btn
                   dense
                   flat
@@ -125,9 +122,7 @@
               </div>
             </div>
           </div>
-          <div v-else class="alert-empty">
-            ไม่มีรายการเบิกจ่ายล่าช้าเกิน 3 เดือน
-          </div>
+          <div v-else class="alert-empty">ไม่มีรายการเบิกจ่ายล่าช้าเกิน 3 เดือน</div>
         </div>
 
         <div class="alert-card alert-card--danger">
@@ -150,14 +145,11 @@
               <div class="alert-item-main">
                 <div class="alert-item-title">{{ c.title }}</div>
                 <div class="alert-item-sub">
-                  ส่งเคลมเมื่อ: {{ c.claimDate }} • ค้างชำระ:
-                  {{ c.overdueDays }} วัน
+                  ส่งเคลมเมื่อ: {{ c.claimDate }} • ค้างชำระ: {{ c.overdueDays }} วัน
                 </div>
               </div>
               <div class="alert-item-side">
-                <span class="alert-item-amount">{{
-                  fmtBaht(c.claimAmount - c.receivedAmount)
-                }}</span>
+                <span class="alert-item-amount">{{ fmtBaht(c.claimAmount - c.receivedAmount) }}</span>
                 <q-btn
                   dense
                   flat
@@ -171,9 +163,7 @@
               </div>
             </div>
           </div>
-          <div v-else class="alert-empty">
-            ไม่มีรายการเบิกจ่ายวิกฤตเกิน 6 เดือน
-          </div>
+          <div v-else class="alert-empty">ไม่มีรายการเบิกจ่ายวิกฤตเกิน 6 เดือน</div>
         </div>
       </div>
 
@@ -182,22 +172,9 @@
         <div class="chart-header-row">
           <div class="chart-header">
             <q-icon name="fact_check" size="18px" class="chart-header-icon" />
-            <span
-              >ตารางติดตามสถานะการรับเงินและส่งเคลมเบิกจ่ายทุกรอบการออกหน่วย</span
-            >
+            <span>ตารางติดตามสถานะการรับเงินและส่งเคลมเบิกจ่ายทุกรอบการออกหน่วย</span>
           </div>
-          <div class="table-header-actions">
-            <span class="table-count">{{ pagination.rowsNumber }} รายการ</span>
-            <q-btn
-              unelevated
-              no-caps
-              dense
-              icon="add"
-              label="เพิ่มตารางติดตาม"
-              class="add-claim-btn"
-              @click="openAddDialog"
-            />
-          </div>
+          <span class="table-count">{{ pagination.rowsNumber }} รายการ</span>
         </div>
 
         <!-- Dedicated filter fields: งานออกหน่วย / สถานที่ / วันที่ออกหน่วย /
@@ -270,6 +247,7 @@
             :grid="isMobile"
             class="claims-table"
           >
+         
             <!-- ลำดับ: running row number, independent of any column data. -->
             <template #body-cell-index="props">
               <q-td :props="props">
@@ -301,35 +279,27 @@
             <!-- วันที่ส่งตั้งเบิก: rounds not yet submitted show an em dash. -->
             <template #body-cell-claimDate="props">
               <q-td :props="props">
-                <span v-if="props.row.submitted">{{
-                  props.row.claimDate
-                }}</span>
+                <span v-if="props.row.submitted">{{ props.row.claimDate }}</span>
                 <span v-else class="overdue-none">-</span>
               </q-td>
             </template>
 
             <template #body-cell-claimAmount="props">
               <q-td :props="props">
-                <span class="amount-claimed">{{
-                  fmtBaht(props.row.claimAmount)
-                }}</span>
+                <span class="amount-claimed">{{ fmtBaht(props.row.claimAmount) }}</span>
               </q-td>
             </template>
 
             <template #body-cell-receivedAmount="props">
               <q-td :props="props">
-                <span class="amount-received">{{
-                  fmtBaht(props.row.receivedAmount)
-                }}</span>
+                <span class="amount-received">{{ fmtBaht(props.row.receivedAmount) }}</span>
               </q-td>
             </template>
 
             <template #body-cell-pendingAmount="props">
               <q-td :props="props">
                 <span class="amount-pending">
-                  {{
-                    fmtBaht(props.row.claimAmount - props.row.receivedAmount)
-                  }}
+                  {{ fmtBaht(props.row.claimAmount - props.row.receivedAmount) }}
                 </span>
               </q-td>
             </template>
@@ -358,6 +328,7 @@
                     no-caps
                     size="sm"
                     icon="edit"
+                  
                     class="row-action-btn row-action-btn--edit"
                     @click="saveClaimStatus(props.row)"
                   />
@@ -367,6 +338,7 @@
                     no-caps
                     size="sm"
                     icon="delete"
+                 
                     class="row-action-btn row-action-btn--delete"
                     @click="askDeleteClaim(props.row)"
                   />
@@ -405,29 +377,21 @@
                 </div>
                 <div class="mobile-row">
                   <span class="mobile-label">วันที่ส่งตั้งเบิก</span>
-                  <span v-if="props.row.submitted">{{
-                    props.row.claimDate
-                  }}</span>
+                  <span v-if="props.row.submitted">{{ props.row.claimDate }}</span>
                   <span v-else class="overdue-none">-</span>
                 </div>
                 <div class="mobile-row">
                   <span class="mobile-label">ยอดเงินตั้งเบิก</span>
-                  <span class="amount-claimed">{{
-                    fmtBaht(props.row.claimAmount)
-                  }}</span>
+                  <span class="amount-claimed">{{ fmtBaht(props.row.claimAmount) }}</span>
                 </div>
                 <div class="mobile-row">
                   <span class="mobile-label">ได้รับเงินแล้ว</span>
-                  <span class="amount-received">{{
-                    fmtBaht(props.row.receivedAmount)
-                  }}</span>
+                  <span class="amount-received">{{ fmtBaht(props.row.receivedAmount) }}</span>
                 </div>
                 <div class="mobile-row">
                   <span class="mobile-label">ยอดค้างชำระ</span>
                   <span class="amount-pending">
-                    {{
-                      fmtBaht(props.row.claimAmount - props.row.receivedAmount)
-                    }}
+                    {{ fmtBaht(props.row.claimAmount - props.row.receivedAmount) }}
                   </span>
                 </div>
                 <div class="mobile-row">
@@ -492,10 +456,10 @@
         </q-card-section>
 
         <q-card-section class="status-dialog-body">
+        
+
           <div class="status-field">
-            <label class="status-label"
-              >วันที่ส่งเรื่องเบิกจ่าย (Claim Date)</label
-            >
+            <label class="status-label">วันที่ส่งเรื่องเบิกจ่าย (Claim Date)</label>
             <q-input
               v-model="statusDialog.claimDate"
               type="date"
@@ -506,9 +470,7 @@
           </div>
 
           <div class="status-field">
-            <label class="status-label"
-              >จำนวนเงินที่ส่งเคลมตั้งเบิก (บาท)</label
-            >
+            <label class="status-label">จำนวนเงินที่ส่งเคลมตั้งเบิก (บาท)</label>
             <q-input
               v-model.number="statusDialog.claimAmount"
               type="number"
@@ -530,9 +492,7 @@
           </div>
 
           <div class="status-field">
-            <label class="status-label"
-              >วันที่ได้รับเงินโอนเข้าบัญชีโรงพยาบาล</label
-            >
+            <label class="status-label">วันที่ได้รับเงินโอนเข้าบัญชีโรงพยาบาล</label>
             <q-input
               v-model="statusDialog.receivedDate"
               type="date"
@@ -542,21 +502,10 @@
             />
           </div>
 
-          <div class="status-field">
-            <label class="status-label">สถานะเบิกจ่าย</label>
-            <q-select
-              v-model="statusDialog.status"
-              :options="STATUS_OPTIONS"
-              dense
-              outlined
-              class="status-input"
-            />
-          </div>
+        
 
           <div class="status-field">
-            <label class="status-label"
-              >บันทึกเพิ่มเติม / สาเหตุความล่าช้า</label
-            >
+            <label class="status-label">บันทึกเพิ่มเติม / สาเหตุความล่าช้า</label>
             <q-input
               v-model="statusDialog.note"
               type="textarea"
@@ -589,192 +538,16 @@
       </q-card>
     </q-dialog>
 
-    <!-- ===== เพิ่มตารางติดตาม dialog: create a brand-new claim record ===== -->
-    <q-dialog v-model="addDialog.show" persistent>
-      <q-card class="status-dialog">
-        <q-btn
-          flat
-          dense
-          round
-          icon="close"
-          class="status-dialog-close"
-          @click="closeAddDialog"
-        />
-
-        <q-card-section class="status-dialog-header">
-          เพิ่มรายการติดตามการเบิกจ่ายใหม่
-        </q-card-section>
-
-        <q-card-section class="status-dialog-body">
-          <div class="status-field">
-            <label class="status-label">งานออกหน่วย</label>
-            <q-input
-              v-model="addDialog.title"
-              dense
-              outlined
-              placeholder="เช่น ออกหน่วยตรวจสุขภาพประจำปี..."
-              class="status-input"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label">สถานที่ / หน่วยงานเป้าหมาย</label>
-            <q-input
-              v-model="addDialog.orgName"
-              dense
-              outlined
-              placeholder="เช่น โรงเรียน... / อบต. ..."
-              class="status-input"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label">กองทุน</label>
-            <q-input
-              v-model="addDialog.fundSource"
-              dense
-              outlined
-              placeholder="เช่น UC (สปสช.) / ประกันสังคม"
-              class="status-input"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label">ไตรมาส</label>
-            <q-select
-              v-model="addDialog.period"
-              :options="quarterOptions"
-              option-label="label"
-              option-value="value"
-              emit-value
-              map-options
-              dense
-              outlined
-              class="status-input"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label">วันที่ออกหน่วย</label>
-            <q-input
-              v-model="addDialog.deployDate"
-              type="date"
-              dense
-              outlined
-              class="status-input"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label"
-              >วันที่ส่งเรื่องเบิกจ่าย (Claim Date)</label
-            >
-            <q-input
-              v-model="addDialog.claimDate"
-              type="date"
-              dense
-              outlined
-              class="status-input"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label"
-              >จำนวนเงินที่ส่งเคลมตั้งเบิก (บาท)</label
-            >
-            <q-input
-              v-model.number="addDialog.claimAmount"
-              type="number"
-              dense
-              outlined
-              class="status-input"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label">จำนวนเงินที่ได้รับจริงแล้ว (บาท)</label>
-            <q-input
-              v-model.number="addDialog.receivedAmount"
-              type="number"
-              dense
-              outlined
-              class="status-input status-input--received"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label"
-              >วันที่ได้รับเงินโอนเข้าบัญชีโรงพยาบาล</label
-            >
-            <q-input
-              v-model="addDialog.receivedDate"
-              type="date"
-              dense
-              outlined
-              class="status-input"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label">สถานะเบิกจ่าย</label>
-            <q-select
-              v-model="addDialog.status"
-              :options="STATUS_OPTIONS"
-              dense
-              outlined
-              class="status-input"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label">บันทึกเพิ่มเติม</label>
-            <q-input
-              v-model="addDialog.note"
-              type="textarea"
-              rows="4"
-              autogrow
-              dense
-              outlined
-              class="status-input status-input--note"
-            />
-          </div>
-        </q-card-section>
-
-        <q-card-actions align="right" class="status-dialog-actions">
-          <q-btn
-            flat
-            no-caps
-            label="ยกเลิก"
-            class="status-btn status-btn--cancel"
-            @click="closeAddDialog"
-          />
-          <q-btn
-            unelevated
-            no-caps
-            label="เพิ่มรายการ"
-            class="status-btn status-btn--save"
-            :loading="isAddingClaim"
-            @click="submitAddDialog"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
     <!-- ===== ลบรายการ confirmation dialog ===== -->
     <q-dialog v-model="deleteDialog.show" persistent>
       <q-card class="delete-dialog">
         <q-card-section class="delete-dialog-header">
-          <q-icon
-            name="delete_forever"
-            size="22px"
-            class="delete-dialog-icon"
-          />
+          <q-icon name="delete_forever" size="22px" class="delete-dialog-icon" />
           ยืนยันการลบข้อมูล
         </q-card-section>
         <q-card-section class="delete-dialog-body">
-          ต้องการลบรายการ <strong>{{ deleteDialog.id }}</strong> ({{
-            deleteDialog.orgName
-          }}) ใช่หรือไม่? การลบไม่สามารถย้อนกลับได้
+          ต้องการลบรายการ <strong>{{ deleteDialog.id }}</strong>
+          ({{ deleteDialog.orgName }}) ใช่หรือไม่? การลบไม่สามารถย้อนกลับได้
         </q-card-section>
         <q-card-actions align="right" class="status-dialog-actions">
           <q-btn
@@ -878,12 +651,6 @@ const periods: readonly Option[] = [
 ];
 const activePeriod = ref<string>("all");
 
-// Same list as `periods`, minus "ทุกไตรมาส" — the เพิ่มตารางติดตาม dialog
-// needs the new record to belong to one concrete quarter, never "all".
-const quarterOptions: readonly Option[] = periods.filter(
-  p => p.value !== "all"
-);
-
 const statusFilterOptions: readonly Option[] = [
   { value: "all", label: "ทุกสถานะ" },
   { value: "normal", label: "รอเบิกจ่ายปกติ" },
@@ -934,8 +701,7 @@ interface ClaimRecord {
 // A ref (not a plain const) — the "บันทึกสถานะ" dialog needs to actually
 // mutate a row's claim/received amounts and dates when saved, and have
 // that change flow through periodClaims → filteredClaims → the table,
-// KPIs, and alert panels automatically. The เพิ่มตารางติดตาม dialog appends
-// a brand-new row the same way.
+// KPIs, and alert panels automatically.
 const CLAIM_RECORDS = ref<ClaimRecord[]>([
   {
     id: "PLH-69-001",
@@ -1003,8 +769,7 @@ const CLAIM_RECORDS = ref<ClaimRecord[]>([
   },
   {
     id: "PLH-69-005",
-    title:
-      "วางแผนออกหน่วยตรวจสุขภาพเคลื่อนที่ กลุ่มผู้สูงอายุและ อสม. ต.แหลมสอม",
+    title: "วางแผนออกหน่วยตรวจสุขภาพเคลื่อนที่ กลุ่มผู้สูงอายุและ อสม. ต.แหลมสอม",
     orgName: "รพ.สต.บ้านแหลมสอม / อบต.แหลมสอม",
     fundSource: "UC (สปสช.)",
     deployDate: "2026-08-15",
@@ -1088,9 +853,7 @@ function isOverdue(row: ClaimRecord): boolean {
 // The header "broadcast" button always covers every overdue round in the
 // system, independent of the current filters — it's a notification action,
 // not a view of the filtered data.
-const overdueCount = computed(
-  () => CLAIM_RECORDS.value.filter(isOverdue).length
-);
+const overdueCount = computed(() => CLAIM_RECORDS.value.filter(isOverdue).length);
 
 /* =========================================================================
  * Claims table: server-request-style pagination/sorting
@@ -1620,10 +1383,7 @@ async function submitStatusDialog(): Promise<void> {
       // Non-fatal: the save already succeeded and the dialog already
       // closed above, so a missing/misconfigured Notify plugin shouldn't
       // block or hide that.
-      console.error(
-        "Notify failed (save itself still succeeded):",
-        notifyError
-      );
+      console.error("Notify failed (save itself still succeeded):", notifyError);
     }
   } catch (error) {
     console.error("Failed to save claim status:", error);
@@ -1638,145 +1398,6 @@ async function submitStatusDialog(): Promise<void> {
     }
   } finally {
     savingRowId.value = null;
-  }
-}
-
-/* =========================================================================
- * Header action: เพิ่มตารางติดตาม (create a brand-new claim record)
- *
- * Separate dialog/state from the edit ("บันทึกสถานะ") flow above since a
- * new round needs the descriptive fields (title/org/fund/quarter) too,
- * not just the claim/received amounts. Submitting appends a fresh
- * ClaimRecord to CLAIM_RECORDS, which flows through periodClaims →
- * filteredClaims → searchedClaims → the table/KPIs/alerts automatically,
- * the same way the edit and delete flows do.
- * ========================================================================= */
-
-const isAddingClaim = ref(false);
-
-interface AddDialogState {
-  show: boolean;
-  title: string;
-  orgName: string;
-  fundSource: string;
-  deployDate: string;
-  claimDate: string;
-  claimAmount: number;
-  receivedAmount: number;
-  receivedDate: string;
-  status: ClaimStatus;
-  note: string;
-  period: "q1" | "q2" | "q3" | "q4";
-}
-
-const addDialog = reactive<AddDialogState>({
-  show: false,
-  title: "",
-  orgName: "",
-  fundSource: "",
-  deployDate: "",
-  claimDate: "",
-  claimAmount: 0,
-  receivedAmount: 0,
-  receivedDate: "",
-  status: "รอเบิกจ่ายปกติ",
-  note: "",
-  period: "q1"
-});
-
-// New IDs continue the existing "PLH-69-NNN" sequence rather than
-// colliding with or duplicating an existing round's code.
-function generateNewClaimId(): string {
-  const usedNumbers = CLAIM_RECORDS.value.map(c => {
-    const match = c.id.match(/PLH-69-(\d+)/);
-    return match ? parseInt(match[1], 10) : 0;
-  });
-  const nextNumber = (usedNumbers.length ? Math.max(...usedNumbers) : 0) + 1;
-  return `PLH-69-${String(nextNumber).padStart(3, "0")}`;
-}
-
-function openAddDialog(): void {
-  addDialog.title = "";
-  addDialog.orgName = "";
-  addDialog.fundSource = "";
-  addDialog.deployDate = "";
-  addDialog.claimDate = "";
-  addDialog.claimAmount = 0;
-  addDialog.receivedAmount = 0;
-  addDialog.receivedDate = "";
-  addDialog.status = "รอเบิกจ่ายปกติ";
-  addDialog.note = "";
-  addDialog.period = "q1";
-  addDialog.show = true;
-}
-
-function closeAddDialog(): void {
-  addDialog.show = false;
-}
-
-async function submitAddDialog(): Promise<void> {
-  if (!addDialog.title.trim() || !addDialog.orgName.trim()) {
-    Notify.create({
-      type: "warning",
-      message: "กรุณากรอกชื่องานออกหน่วยและสถานที่ให้ครบถ้วนก่อนบันทึก",
-      position: "top"
-    });
-    return;
-  }
-
-  isAddingClaim.value = true;
-  try {
-    // Simulated network delay; replace with the real create call.
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const newRecord: ClaimRecord = {
-      id: generateNewClaimId(),
-      title: addDialog.title,
-      orgName: addDialog.orgName,
-      fundSource: addDialog.fundSource,
-      deployDate: addDialog.deployDate,
-      claimDate: addDialog.claimDate,
-      claimAmount: addDialog.claimAmount,
-      receivedAmount: addDialog.receivedAmount,
-      receivedDate: addDialog.receivedDate,
-      note: addDialog.note,
-      overdueDays: 0,
-      status: addDialog.status,
-      submitted: Boolean(addDialog.claimDate),
-      period: addDialog.period
-    };
-
-    CLAIM_RECORDS.value = [...CLAIM_RECORDS.value, newRecord];
-
-    // Same ordering as the edit/delete flows: close + refresh before the
-    // Notify call, so a missing/misconfigured Notify plugin can't leave
-    // the dialog stuck open even though the record was already added.
-    addDialog.show = false;
-    pagination.value.page = 1;
-    tableRef.value?.requestServerInteraction();
-
-    try {
-      Notify.create({
-        type: "positive",
-        message: `เพิ่มรายการ ${newRecord.id} (${newRecord.orgName}) สำเร็จ`,
-        position: "top"
-      });
-    } catch (notifyError) {
-      console.error("Notify failed (add itself still succeeded):", notifyError);
-    }
-  } catch (error) {
-    console.error("Failed to add claim:", error);
-    try {
-      Notify.create({
-        type: "negative",
-        message: "เพิ่มรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-        position: "top"
-      });
-    } catch (notifyError) {
-      console.error("Notify failed:", notifyError);
-    }
-  } finally {
-    isAddingClaim.value = false;
   }
 }
 
@@ -1836,10 +1457,7 @@ async function confirmDeleteClaim(): Promise<void> {
         position: "top"
       });
     } catch (notifyError) {
-      console.error(
-        "Notify failed (delete itself still succeeded):",
-        notifyError
-      );
+      console.error("Notify failed (delete itself still succeeded):", notifyError);
     }
   } catch (error) {
     console.error("Failed to delete claim:", error);
@@ -1894,7 +1512,7 @@ const isExporting = ref(false);
 
 interface ClaimExportRow {
   รหัสรอบ: string;
-  งานออกหน่วย: string;
+  "งานออกหน่วย": string;
   หน่วยงานเป้าหมาย: string;
   กองทุน: string;
   วันที่ออกหน่วย: string;
@@ -1932,7 +1550,7 @@ function exportClaimsToExcel(): void {
   try {
     const rows: ClaimExportRow[] = searchedClaims.value.map(c => ({
       รหัสรอบ: c.id,
-      งานออกหน่วย: c.title,
+      "งานออกหน่วย": c.title,
       หน่วยงานเป้าหมาย: c.orgName,
       กองทุน: c.fundSource,
       วันที่ออกหน่วย: c.deployDate,
@@ -2357,26 +1975,11 @@ function exportClaimsToExcel(): void {
   padding: 18px;
 }
 
-.table-header-actions {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .table-count {
   font-size: 0.78rem;
   color: #8a94a3;
 }
 
-.add-claim-btn {
-  background: #1e6fd9;
-  color: #ffffff;
-  font-size: 0.76rem;
-  font-weight: 700;
-  border-radius: 8px;
-  padding: 6px 14px;
-}
 
 .filter-row {
   display: grid;
@@ -2557,7 +2160,7 @@ function exportClaimsToExcel(): void {
   color: #8a94a3;
 }
 
-/* ===== บันทึกสถานะ / เพิ่มตารางติดตาม dialogs ===== */
+/* ===== บันทึกสถานะ dialog ===== */
 .status-dialog {
   width: 440px;
   max-width: 92vw;
@@ -2586,8 +2189,6 @@ function exportClaimsToExcel(): void {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: 70vh;
-  overflow-y: auto;
 }
 
 .status-field {
@@ -2619,7 +2220,6 @@ function exportClaimsToExcel(): void {
 .status-dialog-actions {
   padding: 14px 22px 18px;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
 .status-btn {
@@ -2692,18 +2292,6 @@ function exportClaimsToExcel(): void {
   .kpi-grid {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
-
-  /* The Thai table title is long enough that it fights the "เพิ่มตารางติดตาม"
-       button for space well before the 599px mobile breakpoint — drop the
-       actions onto their own row on tablet/split-screen widths too. */
-  .chart-header-row {
-    align-items: flex-start;
-  }
-
-  .table-header-actions {
-    width: 100%;
-    justify-content: space-between;
-  }
 }
 
 /* ===== Mobile ===== */
@@ -2714,11 +2302,6 @@ function exportClaimsToExcel(): void {
 
   .filter-row {
     grid-template-columns: 1fr;
-  }
-
-  .add-claim-btn {
-    flex: 1;
-    justify-content: center;
   }
 
   .table-search {
@@ -2767,50 +2350,6 @@ function exportClaimsToExcel(): void {
     flex-direction: row;
     align-items: center;
     gap: 10px;
-  }
-
-  /* Dialogs: same 92vw cap as desktop, but the fixed 22px side padding ate
-       too much of that on small phones (≤375px), so tighten it here. Also
-       cap dialog height so the on-screen keyboard doesn't push the save
-       button off-screen — the body already scrolls internally. */
-  .status-dialog,
-  .delete-dialog {
-    max-height: 88vh;
-  }
-
-  .status-dialog-header {
-    padding: 20px 40px 4px 16px;
-    font-size: 0.96rem;
-  }
-
-  .status-dialog-body {
-    padding: 6px 16px 4px;
-    max-height: 62vh;
-  }
-
-  .status-dialog-actions,
-  .delete-dialog-header,
-  .delete-dialog-body {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .status-btn {
-    flex: 1;
-    min-width: 0;
-    justify-content: center;
-  }
-
-  /* Bigger tap targets for icon-only row actions and inline text actions
-       once a mouse can no longer be assumed. */
-  .row-action-btn {
-    min-height: 36px;
-    min-width: 36px;
-  }
-
-  .alert-item-action {
-    min-height: 32px;
-    padding: 0 4px;
   }
 }
 </style>

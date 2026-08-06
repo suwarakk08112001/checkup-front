@@ -1,0 +1,421 @@
+<template>
+  <q-page class="login-page flex flex-center">
+    <q-card flat bordered class="login-wrap">
+      <q-card-section class="login-wrap__inner">
+        <!-- Heading -->
+        <div class="text-center q-mb-lg">
+          <div class="text-h5 text-weight-bold text-dark">
+            เข้าสู่ระบบบริหารจัดการ (System Authentication)
+          </div>
+          <div class="text-body2 text-grey-7 q-mt-xs">
+            เลือกระดับสิทธิ์ผู้ใช้งาน 3 ระดับ
+            หรือกรอกชื่อผู้ใช้และรหัสผ่านเพื่อเข้าสู่ระบบ
+          </div>
+        </div>
+
+        <!-- Quick login section -->
+        <div class="q-mb-md">
+          <div class="row items-center q-gutter-x-xs q-mb-sm">
+            <q-icon name="bolt" color="primary" size="18px" />
+            <span class="text-subtitle2 text-weight-medium">
+              เข้าสู่ระบบด่วนด้วยระดับสิทธิ์การทำงาน (1-Click Login):
+            </span>
+          </div>
+
+          <div class="row q-col-gutter-md">
+            <div
+              v-for="role in quickRoles"
+              :key="role.key"
+              class="col-12 col-sm-4"
+            >
+              <q-card
+                flat
+                bordered
+                class="role-card cursor-pointer"
+                :class="`role-card--${role.key}`"
+                @click="quickLogin(role)"
+              >
+                <q-card-section>
+                  <div class="row items-center justify-between q-mb-sm">
+                    <div
+                      class="role-icon-box"
+                      :class="`role-icon-box--${role.key}`"
+                    >
+                      <q-icon :name="role.icon" size="22px" />
+                    </div>
+                    <q-badge
+                      rounded
+                      :class="`role-badge role-badge--${role.key}`"
+                    >
+                      {{ role.badge }}
+                    </q-badge>
+                  </div>
+
+                  <div class="text-subtitle1 text-weight-bold q-mb-xs">
+                    {{ role.title }}
+                  </div>
+                  <div class="text-caption text-grey-7 role-desc">
+                    {{ role.description }}
+                  </div>
+                </q-card-section>
+
+                <q-separator />
+
+                <q-card-actions>
+                  <q-btn
+                    flat
+                    dense
+                    no-caps
+                    :class="`role-link role-link--${role.key}`"
+                    :label="`เข้าสู่ระบบ`"
+                    icon-right="arrow_forward"
+                    @click.stop="quickLogin(role)"
+                  />
+                </q-card-actions>
+              </q-card>
+            </div>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="row items-center q-my-lg">
+          <q-separator class="col" />
+          <div class="text-caption text-grey-6 q-px-md">
+            หรือเข้าสู่ระบบด้วยชื่อผู้ใช้งาน
+          </div>
+          <q-separator class="col" />
+        </div>
+
+        <!-- Login form -->
+        <q-form class="form-block" @submit.prevent="onSubmit">
+          <div class="form-grid">
+            <q-input
+              v-model="loginname"
+              outlined
+              dense
+              placeholder="admin / finance / director"
+              label="ชื่อผู้ใช้งาน (Username)"
+            >
+              <template #prepend>
+                <q-icon name="person_outline" />
+              </template>
+            </q-input>
+
+            <q-input
+              v-model="password"
+              outlined
+              dense
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="••••••••"
+              label="รหัสผ่าน (Password)"
+            >
+              <template #prepend>
+                <q-icon name="lock_outline" />
+              </template>
+              <template #append>
+                <q-icon
+                  :name="showPassword ? 'visibility_off' : 'visibility'"
+                  class="cursor-pointer"
+                  @click="showPassword = !showPassword"
+                />
+              </template>
+            </q-input>
+          </div>
+
+          <q-btn
+            type="submit"
+            color="primary"
+            class="full-width login-btn"
+            unelevated
+            no-caps
+            icon="lock"
+            label="เข้าสู่ระบบด้วยบัญชีผู้ใช้"
+          />
+        </q-form>
+
+        <!-- Permission matrix note -->
+        <q-card flat bordered class="q-mt-lg note-card">
+          <q-card-section class="q-pb-sm">
+            <div class="row items-center q-gutter-x-xs">
+              <q-icon name="info_outline" color="grey-7" size="18px" />
+              <span class="text-caption text-weight-medium text-grey-8">
+                หมายเหตุสิทธิ์การใช้งานของแต่ละระดับ (Permission Matrix):
+              </span>
+            </div>
+          </q-card-section>
+          <q-card-section class="q-pt-none">
+            <ul class="note-list text-caption text-grey-8">
+              <li>
+                <span class="text-weight-bold text-primary"
+                  >Admin Wellness:</span
+                >
+                เข้าถึงทุกเมนู รวมทั้งหน้าตั้งค่าต้นทุนและชุดตรวจสุขภาพ
+              </li>
+              <li>
+                <span class="text-weight-bold text-positive">ศูนย์รายได้:</span>
+                บันทึกเบิกจ่าย รับเงินโอน และอัปโหลดข้อมูล (ถูกซ่อนหน้าตั้งค่า)
+              </li>
+              <li>
+                <span class="text-weight-bold text-secondary"
+                  >ผู้อำนวยการ รพ.:</span
+                >
+                อ่าน/ดูรายงานได้ทุกส่วน แต่ไม่สามารถแก้ไข
+                และมองไม่เห็นหน้าตั้งค่า
+              </li>
+            </ul>
+          </q-card-section>
+        </q-card>
+      </q-card-section>
+    </q-card>
+  </q-page>
+</template>
+
+<script setup lang="ts">
+import { ref } from "vue";
+import { useRouter } from "vue-router";
+
+interface QuickRole {
+  key: "admin" | "finance" | "director";
+  title: string;
+  badge: string;
+  description: string;
+  icon: string;
+  loginname: string;
+}
+
+const router = useRouter();
+
+const loginname = ref("");
+const password = ref("");
+const showPassword = ref(false);
+
+const quickRoles: QuickRole[] = [
+  {
+    key: "admin",
+    title: "Admin Wellness",
+    badge: "Admin",
+    description: "สิทธิ์เต็มระบบ: ตั้งค่าต้นทุน, จัดการทริป, บริหารชุดตรวจ",
+    icon: "shield",
+    loginname: "admin"
+  },
+  {
+    key: "finance",
+    title: "ศูนย์รายได้ / การเงิน",
+    badge: "ศูนย์รายได้",
+    description: "กรอกข้อมูลเบิกจ่าย, บันทึกการรับเงิน, อัปโหลดตรวจจริง",
+    icon: "paid",
+    loginname: "finance"
+  },
+  {
+    key: "director",
+    title: "ผู้อำนวยการ รพ.",
+    badge: "ผู้อำนวยการ",
+    description: "ดูรายงานภาพรวมได้อย่างเดียว (มองไม่เห็นหน้าตั้งค่า)",
+    icon: "visibility",
+    loginname: "director"
+  }
+];
+
+function quickLogin(role: QuickRole) {
+  loginname.value = role.loginname;
+  // TODO: replace with real authentication call
+  router.push("/");
+}
+
+function onSubmit() {
+  // TODO: replace with real authentication call
+  router.push("/");
+}
+</script>
+
+<style scoped>
+.login-page {
+  background: #f5f7fa;
+  padding: 24px 16px;
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Outer frame around the entire form */
+.login-wrap {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  border-radius: 14px;
+  border: 1px solid #e2e6ec;
+  box-shadow: 0 6px 24px rgba(17, 24, 39, 0.06);
+  background: #ffffff;
+}
+
+.login-wrap__inner {
+  padding: 32px;
+  box-sizing: border-box;
+}
+
+/* Plain CSS grid (no Quasar negative-margin gutter) so inputs/button
+     never bleed past the card's inner padding */
+.form-block {
+  width: 100%;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  margin-bottom: 24px;
+  width: 100%;
+}
+
+.form-grid :deep(.q-field) {
+  margin-bottom: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.login-btn {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+}
+
+.form-grid :deep(.q-field__inner) {
+  min-height: 44px;
+}
+
+@media (min-width: 600px) {
+  .form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.role-card {
+  height: 100%;
+  border-radius: 10px;
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.role-card:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.role-icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+}
+
+.role-icon-box--admin {
+  background: #f1e9fb;
+  color: #7e3ff2;
+}
+
+.role-icon-box--finance {
+  background: #e3f7ea;
+  color: #17a865;
+}
+
+.role-icon-box--director {
+  background: #e6f0fb;
+  color: #1e6fd9;
+}
+
+.role-badge {
+  font-weight: 500;
+  font-size: 0.7rem;
+}
+
+.role-badge--admin {
+  background: #f1e9fb;
+  color: #7e3ff2;
+}
+
+.role-badge--finance {
+  background: #e3f7ea;
+  color: #17a865;
+}
+
+.role-badge--director {
+  background: #e6f0fb;
+  color: #1e6fd9;
+}
+
+.role-desc {
+  line-height: 1.4;
+  min-height: 36px;
+}
+
+.role-link {
+  padding: 0;
+}
+
+.role-link--admin {
+  color: #7e3ff2;
+}
+
+.role-link--finance {
+  color: #17a865;
+}
+
+.role-link--director {
+  color: #1e6fd9;
+}
+
+.login-btn {
+  height: 44px;
+  font-weight: 500;
+  border-radius: 8px;
+}
+
+.note-card {
+  background: #fafbfc;
+  border-radius: 10px;
+}
+
+.note-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.note-list li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+/* Tablet adjustments */
+@media (max-width: 899px) {
+  .login-wrap__inner {
+    padding: 24px;
+  }
+}
+
+/* Mobile adjustments */
+@media (max-width: 599px) {
+  .login-page {
+    padding: 16px 12px;
+  }
+
+  .login-wrap {
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .login-wrap__inner {
+    padding: 16px;
+  }
+
+  .role-desc {
+    min-height: 0;
+  }
+}
+</style>

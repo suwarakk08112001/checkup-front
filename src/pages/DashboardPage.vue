@@ -128,7 +128,11 @@
                     :y1="g.pos"
                     :y2="g.pos"
                   />
-                  <text :x="BAR_CHART.marginLeft - 8" :y="g.pos + 4" text-anchor="end">
+                  <text
+                    :x="BAR_CHART.marginLeft - 8"
+                    :y="g.pos + 4"
+                    text-anchor="end"
+                  >
                     {{ g.label }}
                   </text>
                 </template>
@@ -442,7 +446,10 @@ const fiscalYears: readonly FiscalYear[] = [2024, 2025, 2026].map(year => ({
 // Quasar's own "use-input" filtering example.
 const filteredFiscalYears = ref<readonly FiscalYear[]>(fiscalYears);
 
-function filterFiscalYears(val: string, update: (cb: () => void) => void): void {
+function filterFiscalYears(
+  val: string,
+  update: (cb: () => void) => void
+): void {
   if (val === "") {
     update(() => {
       filteredFiscalYears.value = fiscalYears;
@@ -518,38 +525,39 @@ interface CostSlice {
   color: string;
 }
 
-const COST_BREAKDOWN_BY_PERIOD: Readonly<Record<string, readonly CostSlice[]>> = {
-  all: [
-    { label: "วัสดุ/น้ำยาแล็บ", value: 66500, color: COLORS.profit },
-    { label: "ค่าแรงบุคลากร", value: 80900, color: COLORS.revenue },
-    { label: "ค่าพาหนะ/น้ำมัน", value: 2400, color: COLORS.warning },
-    { label: "ค่าใช้สอยอื่นๆ", value: 18600, color: COLORS.purple }
-  ],
-  q1: [
-    { label: "วัสดุ/น้ำยาแล็บ", value: 13430, color: COLORS.profit },
-    { label: "ค่าแรงบุคลากร", value: 16340, color: COLORS.revenue },
-    { label: "ค่าพาหนะ/น้ำมัน", value: 490, color: COLORS.warning },
-    { label: "ค่าใช้สอยอื่นๆ", value: 3740, color: COLORS.purple }
-  ],
-  q2: [
-    { label: "วัสดุ/น้ำยาแล็บ", value: 26870, color: COLORS.profit },
-    { label: "ค่าแรงบุคลากร", value: 32680, color: COLORS.revenue },
-    { label: "ค่าพาหนะ/น้ำมัน", value: 970, color: COLORS.warning },
-    { label: "ค่าใช้สอยอื่นๆ", value: 7510, color: COLORS.purple }
-  ],
-  q3: [
-    { label: "วัสดุ/น้ำยาแล็บ", value: 12240, color: COLORS.profit },
-    { label: "ค่าแรงบุคลากร", value: 14890, color: COLORS.revenue },
-    { label: "ค่าพาหนะ/น้ำมัน", value: 440, color: COLORS.warning },
-    { label: "ค่าใช้สอยอื่นๆ", value: 3420, color: COLORS.purple }
-  ],
-  q4: [
-    { label: "วัสดุ/น้ำยาแล็บ", value: 13970, color: COLORS.profit },
-    { label: "ค่าแรงบุคลากร", value: 16990, color: COLORS.revenue },
-    { label: "ค่าพาหนะ/น้ำมัน", value: 500, color: COLORS.warning },
-    { label: "ค่าใช้สอยอื่นๆ", value: 3900, color: COLORS.purple }
-  ]
-};
+const COST_BREAKDOWN_BY_PERIOD: Readonly<Record<string, readonly CostSlice[]>> =
+  {
+    all: [
+      { label: "วัสดุ/น้ำยาแล็บ", value: 66500, color: COLORS.profit },
+      { label: "ค่าแรงบุคลากร", value: 80900, color: COLORS.revenue },
+      { label: "ค่าพาหนะ/น้ำมัน", value: 2400, color: COLORS.warning },
+      { label: "ค่าใช้สอยอื่นๆ", value: 18600, color: COLORS.purple }
+    ],
+    q1: [
+      { label: "วัสดุ/น้ำยาแล็บ", value: 13430, color: COLORS.profit },
+      { label: "ค่าแรงบุคลากร", value: 16340, color: COLORS.revenue },
+      { label: "ค่าพาหนะ/น้ำมัน", value: 490, color: COLORS.warning },
+      { label: "ค่าใช้สอยอื่นๆ", value: 3740, color: COLORS.purple }
+    ],
+    q2: [
+      { label: "วัสดุ/น้ำยาแล็บ", value: 26870, color: COLORS.profit },
+      { label: "ค่าแรงบุคลากร", value: 32680, color: COLORS.revenue },
+      { label: "ค่าพาหนะ/น้ำมัน", value: 970, color: COLORS.warning },
+      { label: "ค่าใช้สอยอื่นๆ", value: 7510, color: COLORS.purple }
+    ],
+    q3: [
+      { label: "วัสดุ/น้ำยาแล็บ", value: 12240, color: COLORS.profit },
+      { label: "ค่าแรงบุคลากร", value: 14890, color: COLORS.revenue },
+      { label: "ค่าพาหนะ/น้ำมัน", value: 440, color: COLORS.warning },
+      { label: "ค่าใช้สอยอื่นๆ", value: 3420, color: COLORS.purple }
+    ],
+    q4: [
+      { label: "วัสดุ/น้ำยาแล็บ", value: 13970, color: COLORS.profit },
+      { label: "ค่าแรงบุคลากร", value: 16990, color: COLORS.revenue },
+      { label: "ค่าพาหนะ/น้ำมัน", value: 500, color: COLORS.warning },
+      { label: "ค่าใช้สอยอื่นๆ", value: 3900, color: COLORS.purple }
+    ]
+  };
 
 interface StatusItem {
   label: string;
@@ -559,33 +567,75 @@ interface StatusItem {
   amount: number;
 }
 
-const STATUS_BY_PERIOD: Readonly<Record<string, { items: readonly StatusItem[] }>> = {
+const STATUS_BY_PERIOD: Readonly<
+  Record<string, { items: readonly StatusItem[] }>
+> = {
   all: {
     items: [
-      { label: "เบิกจ่ายปกติ (Waiting)", count: 2, color: COLORS.info, amount: 185000 },
-      { label: "ล่าช้า >3 เดือน (Warning)", count: 2, color: COLORS.warning, amount: 139070 },
-      { label: "ได้รับเงินแล้ว (Paid)", count: 1, color: COLORS.profit, amount: 122640 }
+      {
+        label: "เบิกจ่ายปกติ (Waiting)",
+        count: 2,
+        color: COLORS.info,
+        amount: 185000
+      },
+      {
+        label: "ล่าช้า >3 เดือน (Warning)",
+        count: 2,
+        color: COLORS.warning,
+        amount: 139070
+      },
+      {
+        label: "ได้รับเงินแล้ว (Paid)",
+        count: 1,
+        color: COLORS.profit,
+        amount: 122640
+      }
     ]
   },
   q1: {
     items: [
-      { label: "เบิกจ่ายปกติ (Waiting)", count: 1, color: COLORS.info, amount: 108000 }
+      {
+        label: "เบิกจ่ายปกติ (Waiting)",
+        count: 1,
+        color: COLORS.info,
+        amount: 108000
+      }
     ]
   },
   q2: {
     items: [
-      { label: "เบิกจ่ายปกติ (Waiting)", count: 1, color: COLORS.info, amount: 30360 },
-      { label: "ได้รับเงินแล้ว (Paid)", count: 1, color: COLORS.profit, amount: 122640 }
+      {
+        label: "เบิกจ่ายปกติ (Waiting)",
+        count: 1,
+        color: COLORS.info,
+        amount: 30360
+      },
+      {
+        label: "ได้รับเงินแล้ว (Paid)",
+        count: 1,
+        color: COLORS.profit,
+        amount: 122640
+      }
     ]
   },
   q3: {
     items: [
-      { label: "ล่าช้า >3 เดือน (Warning)", count: 1, color: COLORS.warning, amount: 93000 }
+      {
+        label: "ล่าช้า >3 เดือน (Warning)",
+        count: 1,
+        color: COLORS.warning,
+        amount: 93000
+      }
     ]
   },
   q4: {
     items: [
-      { label: "ล่าช้า >3 เดือน (Warning)", count: 1, color: COLORS.warning, amount: 92710 }
+      {
+        label: "ล่าช้า >3 เดือน (Warning)",
+        count: 1,
+        color: COLORS.warning,
+        amount: 92710
+      }
     ]
   }
 };
@@ -605,36 +655,102 @@ interface RevenueSource {
   color: string;
 }
 
-const REVENUE_MIX_BY_PERIOD: Readonly<Record<string, readonly RevenueSource[]>> = {
+const REVENUE_MIX_BY_PERIOD: Readonly<
+  Record<string, readonly RevenueSource[]>
+> = {
   all: [
-    { label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"], value: 330, color: COLORS.revenue },
-    { label: ["ประกันสังคม", "(ม.33/ม.39)"], value: 195, color: COLORS.revenue },
-    { label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"], value: 145, color: COLORS.revenue },
-    { label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"], value: 95, color: COLORS.revenue }
+    {
+      label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"],
+      value: 330,
+      color: COLORS.revenue
+    },
+    {
+      label: ["ประกันสังคม", "(ม.33/ม.39)"],
+      value: 195,
+      color: COLORS.revenue
+    },
+    {
+      label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"],
+      value: 145,
+      color: COLORS.revenue
+    },
+    {
+      label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"],
+      value: 95,
+      color: COLORS.revenue
+    }
   ],
   q1: [
-    { label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"], value: 80, color: COLORS.revenue },
+    {
+      label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"],
+      value: 80,
+      color: COLORS.revenue
+    },
     { label: ["ประกันสังคม", "(ม.33/ม.39)"], value: 47, color: COLORS.revenue },
-    { label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"], value: 35, color: COLORS.revenue },
-    { label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"], value: 23, color: COLORS.revenue }
+    {
+      label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"],
+      value: 35,
+      color: COLORS.revenue
+    },
+    {
+      label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"],
+      value: 23,
+      color: COLORS.revenue
+    }
   ],
   q2: [
-    { label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"], value: 113, color: COLORS.revenue },
+    {
+      label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"],
+      value: 113,
+      color: COLORS.revenue
+    },
     { label: ["ประกันสังคม", "(ม.33/ม.39)"], value: 67, color: COLORS.revenue },
-    { label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"], value: 50, color: COLORS.revenue },
-    { label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"], value: 33, color: COLORS.revenue }
+    {
+      label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"],
+      value: 50,
+      color: COLORS.revenue
+    },
+    {
+      label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"],
+      value: 33,
+      color: COLORS.revenue
+    }
   ],
   q3: [
-    { label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"], value: 69, color: COLORS.revenue },
+    {
+      label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"],
+      value: 69,
+      color: COLORS.revenue
+    },
     { label: ["ประกันสังคม", "(ม.33/ม.39)"], value: 41, color: COLORS.revenue },
-    { label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"], value: 30, color: COLORS.revenue },
-    { label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"], value: 20, color: COLORS.revenue }
+    {
+      label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"],
+      value: 30,
+      color: COLORS.revenue
+    },
+    {
+      label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"],
+      value: 20,
+      color: COLORS.revenue
+    }
   ],
   q4: [
-    { label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"], value: 68, color: COLORS.revenue },
+    {
+      label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"],
+      value: 68,
+      color: COLORS.revenue
+    },
     { label: ["ประกันสังคม", "(ม.33/ม.39)"], value: 40, color: COLORS.revenue },
-    { label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"], value: 30, color: COLORS.revenue },
-    { label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"], value: 19, color: COLORS.revenue }
+    {
+      label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"],
+      value: 30,
+      color: COLORS.revenue
+    },
+    {
+      label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"],
+      value: 19,
+      color: COLORS.revenue
+    }
   ]
 };
 
@@ -822,7 +938,8 @@ function exportTripsToExcel(): void {
 
   isExporting.value = true;
   try {
-    const indexes = PERIOD_TO_TRIP_INDEXES[activePeriod.value] ?? PERIOD_TO_TRIP_INDEXES.all;
+    const indexes =
+      PERIOD_TO_TRIP_INDEXES[activePeriod.value] ?? PERIOD_TO_TRIP_INDEXES.all;
     // `TRIP_RECORDS[i]` is `TripRecord | undefined` to the type checker
     // since `i` is a runtime index, not a literal — even though every
     // index in PERIOD_TO_TRIP_INDEXES is known to be in range. The filter
@@ -839,7 +956,8 @@ function exportTripsToExcel(): void {
     XLSX.utils.book_append_sheet(workbook, worksheet, "รายงานการออกหน่วย");
 
     const yearLabel = fiscalYearShortLabel.value.replace(/\s|\./g, "");
-    const periodLabel = periods.find(p => p.value === activePeriod.value)?.label ?? "ทั้งหมด";
+    const periodLabel =
+      periods.find(p => p.value === activePeriod.value)?.label ?? "ทั้งหมด";
     XLSX.writeFile(
       workbook,
       `รายงานการออกหน่วยตรวจสุขภาพ_${yearLabel}_${periodLabel}.xlsx`
@@ -890,7 +1008,11 @@ interface AxisTick {
 function buildAxisTicks(max: number, step: number): AxisTick[] {
   const ticks: AxisTick[] = [];
   for (let value = 0; value <= max; value += step) {
-    ticks.push({ value, ratio: value / max, label: value === 0 ? "0" : fmtNum(value) });
+    ticks.push({
+      value,
+      ratio: value / max,
+      label: value === 0 ? "0" : fmtNum(value)
+    });
   }
   return ticks;
 }
@@ -934,7 +1056,9 @@ const kpis = computed<Kpi[]>(() => {
     .reduce((sum, s) => sum + s.amount, 0);
   const fundPercent = revenue ? Math.round((paidTotal / revenue) * 100) : 0;
 
-  const patients = Math.round(PATIENTS_BY_PERIOD[activePeriod.value] * yearScale.value);
+  const patients = Math.round(
+    PATIENTS_BY_PERIOD[activePeriod.value] * yearScale.value
+  );
   const planPercent = PLAN_PERCENT_BY_PERIOD[activePeriod.value];
 
   return [
@@ -995,14 +1119,18 @@ const BAR_CHART = {
 } as const;
 
 const barPlotW = BAR_CHART.width - BAR_CHART.marginLeft - BAR_CHART.marginRight;
-const barPlotH = BAR_CHART.height - BAR_CHART.marginTop - BAR_CHART.marginBottom;
+const barPlotH =
+  BAR_CHART.height - BAR_CHART.marginTop - BAR_CHART.marginBottom;
 const groupBarsW = BAR_CHART.barWidth * 3 + BAR_CHART.barGap * 2;
 
 // Axis max adapts to whichever period is selected — a single trip or a
 // two-trip quarter has a very different scale than the full-year total,
 // so a fixed axis would make small periods look flat.
 const yMax = computed(() =>
-  computeAxisMax(units.value.flatMap(u => [u.revenue, u.cost]), BAR_CHART.axisStep)
+  computeAxisMax(
+    units.value.flatMap(u => [u.revenue, u.cost]),
+    BAR_CHART.axisStep
+  )
 );
 const yStep = computed(() => yMax.value / 4);
 
@@ -1016,10 +1144,17 @@ const gridLines = computed(() =>
 
 const bars = computed(() => {
   const groupW = barPlotW / units.value.length;
-  const result: { x: number; y: number; width: number; height: number; color: string }[] = [];
+  const result: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    color: string;
+  }[] = [];
 
   units.value.forEach((u, i) => {
-    const groupX = BAR_CHART.marginLeft + i * groupW + (groupW - groupBarsW) / 2;
+    const groupX =
+      BAR_CHART.marginLeft + i * groupW + (groupW - groupBarsW) / 2;
     const profit = u.revenue - u.cost;
     const series = [
       { value: u.revenue, color: COLORS.revenue },
@@ -1059,7 +1194,10 @@ const costBreakdown = computed(() =>
     return {
       ...c,
       value: scaled,
-      amountLabel: scaled >= 1000 ? `${(scaled / 1000).toFixed(1)}k` : String(Math.round(scaled))
+      amountLabel:
+        scaled >= 1000
+          ? `${(scaled / 1000).toFixed(1)}k`
+          : String(Math.round(scaled))
     };
   })
 );
@@ -1151,8 +1289,17 @@ const statusSlices = computed(() => {
       ...s,
       path,
       labelLines: lines,
-      labelLine: { x1: labelInner.x, y1: labelInner.y, x2: labelOuter.x, y2: labelOuter.y },
-      labelPos: { x: labelTextX, y: labelOuter.y, anchor: isRight ? "start" : "end" }
+      labelLine: {
+        x1: labelInner.x,
+        y1: labelInner.y,
+        x2: labelOuter.x,
+        y2: labelOuter.y
+      },
+      labelPos: {
+        x: labelTextX,
+        y: labelOuter.y,
+        anchor: isRight ? "start" : "end"
+      }
     };
   });
 });
@@ -1172,8 +1319,10 @@ const HBAR_CHART = {
   axisStep: 90
 } as const;
 
-const hbarPlotW = HBAR_CHART.width - HBAR_CHART.marginLeft - HBAR_CHART.marginRight;
-const hbarPlotH = HBAR_CHART.height - HBAR_CHART.marginTop - HBAR_CHART.marginBottom;
+const hbarPlotW =
+  HBAR_CHART.width - HBAR_CHART.marginLeft - HBAR_CHART.marginRight;
+const hbarPlotH =
+  HBAR_CHART.height - HBAR_CHART.marginTop - HBAR_CHART.marginBottom;
 
 const revenueMix = computed(() =>
   REVENUE_MIX_BY_PERIOD[activePeriod.value].map(r => ({
@@ -1185,7 +1334,10 @@ const revenueMix = computed(() =>
 // Axis max also adapts per period so a quarter's smaller totals still
 // fill the chart width instead of rendering as tiny slivers.
 const hbarMax = computed(() =>
-  computeAxisMax(revenueMix.value.map(r => r.value), HBAR_CHART.axisStep)
+  computeAxisMax(
+    revenueMix.value.map(r => r.value),
+    HBAR_CHART.axisStep
+  )
 );
 const hbarStep = computed(() => hbarMax.value / 4);
 

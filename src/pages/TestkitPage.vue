@@ -49,7 +49,7 @@
         <div class="section-row">
           <span class="section-label">
             ชุดตรวจสุขภาพที่เปิดให้บริการออกหน่วย
-            <span v-if="hasActiveFilters" class="section-count">
+            <span class="section-count">
               ({{ filteredSets.length }} จาก {{ checkupSets.length }} ชุด)
             </span>
           </span>
@@ -63,158 +63,216 @@
           />
         </div>
 
-        <!-- ===== Search + item filter toolbar ===== -->
-        <div class="filter-toolbar">
-          <q-input
-            dense
-            outlined
-            clearable
-            hide-bottom-space
-            v-model="searchQuery"
-            placeholder="ค้นหาชื่อชุดตรวจ หรือรหัสชุดตรวจ..."
-            class="search-input"
-          >
-            <template #prepend>
-              <q-icon name="search" size="18px" />
-            </template>
-          </q-input>
+        <q-table
+          flat
+          borderless
+          grid
+          hide-header
+          hide-bottom
+          :rows="checkupSets"
+          :columns="setColumns"
+          row-key="id"
+          :filter="setFilterTerms"
+          :filter-method="filterSetRows"
+          v-model:pagination="setsPagination"
+          class="sets-table"
+        >
+          <!-- ===== Search + item filter toolbar, now part of the table
+               itself (top slot) rather than a sibling element ===== -->
+          <template v-slot:top>
+            <div class="filter-toolbar">
+              <q-input
+                dense
+                outlined
+                clearable
+                hide-bottom-space
+                v-model="searchQuery"
+                placeholder="ค้นหาชื่อชุดตรวจ หรือรหัสชุดตรวจ..."
+                class="search-input"
+              >
+                <template #prepend>
+                  <q-icon name="search" size="18px" />
+                </template>
+              </q-input>
 
-          <q-btn
-            no-caps
-            outline
-            icon="filter_list"
-            :label="filterButtonLabel"
-            class="filter-btn"
-          >
-            <q-menu anchor="bottom left" self="top left">
-              <div class="filter-menu">
-                <div class="filter-menu-title">
-                  กรองตามรายการตรวจที่มีใน Set
+              <q-btn
+                no-caps
+                outline
+                icon="filter_list"
+                :label="filterButtonLabel"
+                class="filter-btn"
+              >
+                <q-menu anchor="bottom left" self="top left">
+                  <div class="filter-menu">
+                    <div class="filter-menu-title">
+                      กรองตามรายการตรวจที่มีใน Set
+                    </div>
+                    <div class="item-check-grid item-check-grid--menu">
+                      <label
+                        v-for="item in ITEM_CATALOG"
+                        :key="item.id"
+                        class="item-check"
+                        :class="{
+                          'item-check--checked': filterItemIds.includes(item.id)
+                        }"
+                      >
+                        <q-checkbox
+                          dense
+                          color="positive"
+                          v-model="filterItemIds"
+                          :val="item.id"
+                        />
+                        <span class="item-check-label" :title="item.label">{{
+                          item.label
+                        }}</span>
+                      </label>
+                    </div>
+                    <div class="filter-menu-actions">
+                      <q-btn
+                        no-caps
+                        flat
+                        dense
+                        size="sm"
+                        label="ล้างตัวกรองรายการตรวจ"
+                        :disable="!filterItemIds.length"
+                        @click="filterItemIds = []"
+                      />
+                    </div>
+                  </div>
+                </q-menu>
+              </q-btn>
+
+              <q-btn
+                v-if="hasActiveFilters"
+                no-caps
+                flat
+                dense
+                icon="close"
+                label="ล้างตัวกรองทั้งหมด"
+                class="clear-filters-btn"
+                @click="clearFilters"
+              />
+            </div>
+          </template>
+
+          <template v-slot:item="scope">
+            <div class="col-12 col-md-6 q-pa-xs">
+              <div class="set-card">
+                <div class="set-card-top">
+                  <span class="set-code">{{ scope.row.code }}</span>
+                  <div class="set-cost">
+                    <span class="set-cost-label">ต้นทุนวัสดุ/น้ำยาต่อหัว</span>
+                    <span class="set-cost-value">{{
+                      fmtBaht(scope.row.costPerHead)
+                    }}</span>
+                  </div>
                 </div>
-                <div class="item-check-grid item-check-grid--menu">
-                  <label
-                    v-for="item in ITEM_CATALOG"
+
+                <div class="set-title">{{ scope.row.title }}</div>
+                <div class="set-desc">{{ scope.row.description }}</div>
+
+                <div class="set-items-label">
+                  รายการตรวจที่ผูกใน Set นี้ ({{ scope.row.itemIds.length }}
+                  รายการ):
+                </div>
+                <div class="set-items">
+                  <span
+                    v-for="(item, idx) in setItems(scope.row)"
                     :key="item.id"
-                    class="item-check"
+                    class="set-item-chip"
                     :class="{
-                      'item-check--checked': filterItemIds.includes(item.id)
+                      'set-item-chip--matched': filterItemIds.includes(item.id)
                     }"
                   >
-                    <q-checkbox
-                      dense
-                      color="positive"
-                      v-model="filterItemIds"
-                      :val="item.id"
+                    <q-icon
+                      :name="item.icon"
+                      size="14px"
+                      :style="{ color: chipColor(idx) }"
                     />
-                    <span class="item-check-label" :title="item.label">{{
-                      item.label
-                    }}</span>
-                  </label>
+                    {{ item.label }}
+                  </span>
                 </div>
-                <div class="filter-menu-actions">
+
+                <div class="set-card-actions">
                   <q-btn
                     no-caps
                     flat
                     dense
-                    size="sm"
-                    label="ล้างตัวกรองรายการตรวจ"
-                    :disable="!filterItemIds.length"
-                    @click="filterItemIds = []"
+                    icon="delete_outline"
+                    label="ลบ"
+                    class="delete-btn"
+                    @click="requestDelete(scope.row)"
+                  />
+                  <q-btn
+                    no-caps
+                    flat
+                    dense
+                    icon="edit"
+                    label="แก้ไข Set"
+                    class="edit-btn"
+                    @click="openEditDialog(scope.row)"
                   />
                 </div>
               </div>
-            </q-menu>
-          </q-btn>
+            </div>
+          </template>
 
-          <q-btn
-            v-if="hasActiveFilters"
-            no-caps
-            flat
-            dense
-            icon="close"
-            label="ล้างตัวกรองทั้งหมด"
-            class="clear-filters-btn"
-            @click="clearFilters"
-          />
-        </div>
+          <!-- ===== Empty state, rendered by the table itself when the
+               filter/filter-method yields no rows ===== -->
+          <template v-slot:no-data>
+            <div v-if="hasActiveFilters" class="empty-state">
+              <q-icon name="search_off" size="28px" class="empty-icon" />
+              <div class="empty-title">ไม่พบชุดตรวจที่ตรงกับเงื่อนไข</div>
+              <div class="empty-sub">ลองแก้คำค้นหา หรือล้างตัวกรองรายการตรวจ</div>
+              <q-btn
+                no-caps
+                flat
+                dense
+                label="ล้างตัวกรองทั้งหมด"
+                class="empty-clear-btn"
+                @click="clearFilters"
+              />
+            </div>
 
-        <div v-if="filteredSets.length" class="sets-grid">
-          <div v-for="s in filteredSets" :key="s.id" class="set-card">
-            <div class="set-card-top">
-              <span class="set-code">{{ s.code }}</span>
-              <div class="set-cost">
-                <span class="set-cost-label">ต้นทุนวัสดุ/น้ำยาต่อหัว</span>
-                <span class="set-cost-value">{{ fmtBaht(s.costPerHead) }}</span>
+            <div v-else class="empty-state">
+              <q-icon name="inventory_2" size="28px" class="empty-icon" />
+              <div class="empty-title">ยังไม่มีชุดตรวจ</div>
+              <div class="empty-sub">
+                เริ่มต้นสร้างชุดตรวจสุขภาพชุดแรกสำหรับออกหน่วย
               </div>
             </div>
+          </template>
+        </q-table>
 
-            <div class="set-title">{{ s.title }}</div>
-            <div class="set-desc">{{ s.description }}</div>
-
-            <div class="set-items-label">
-              รายการตรวจที่ผูกใน Set นี้ ({{ s.itemIds.length }} รายการ):
-            </div>
-            <div class="set-items">
-              <span
-                v-for="(item, idx) in setItems(s)"
-                :key="item.id"
-                class="set-item-chip"
-                :class="{
-                  'set-item-chip--matched': filterItemIds.includes(item.id)
-                }"
-              >
-                <q-icon
-                  :name="item.icon"
-                  size="14px"
-                  :style="{ color: chipColor(idx) }"
-                />
-                {{ item.label }}
-              </span>
-            </div>
-
-            <div class="set-card-actions">
-              <q-btn
-                no-caps
-                flat
-                dense
-                icon="delete_outline"
-                label="ลบ"
-                class="delete-btn"
-                @click="requestDelete(s)"
-              />
-              <q-btn
-                no-caps
-                flat
-                dense
-                icon="edit"
-                label="แก้ไข Set"
-                class="edit-btn"
-                @click="openEditDialog(s)"
-              />
-            </div>
+        <!-- ===== Sets pagination ===== -->
+        <div v-if="filteredSets.length" class="pagination-bar">
+          <div class="pagination-info">
+            แสดง {{ setsPageStart + 1 }}–{{ setsPageEnd }} จาก
+            {{ filteredSets.length }} ชุด
           </div>
-        </div>
 
-        <div v-else-if="hasActiveFilters" class="empty-state">
-          <q-icon name="search_off" size="28px" class="empty-icon" />
-          <div class="empty-title">ไม่พบชุดตรวจที่ตรงกับเงื่อนไข</div>
-          <div class="empty-sub">ลองแก้คำค้นหา หรือล้างตัวกรองรายการตรวจ</div>
-          <q-btn
-            no-caps
-            flat
+          <q-pagination
+            v-model="setsPagination.page"
+            :max="setsTotalPages"
+            :max-pages="6"
+            boundary-numbers
+            direction-links
             dense
-            label="ล้างตัวกรองทั้งหมด"
-            class="empty-clear-btn"
-            @click="clearFilters"
+            color="primary"
+            active-design="unelevated"
+            class="pagination-nav"
           />
-        </div>
 
-        <div v-else class="empty-state">
-          <q-icon name="inventory_2" size="28px" class="empty-icon" />
-          <div class="empty-title">ยังไม่มีชุดตรวจ</div>
-          <div class="empty-sub">
-            เริ่มต้นสร้างชุดตรวจสุขภาพชุดแรกสำหรับออกหน่วย
-          </div>
+          <q-select
+            dense
+            outlined
+            emit-value
+            map-options
+            hide-bottom-space
+            v-model="setsPagination.rowsPerPage"
+            :options="PAGE_SIZE_OPTIONS"
+            class="page-size-select"
+          />
         </div>
       </template>
 
@@ -246,7 +304,24 @@
           />
         </div>
 
-        <div class="table-card">
+        <!-- ===== Matrix search toolbar ===== -->
+        <div class="filter-toolbar">
+          <q-input
+            dense
+            outlined
+            clearable
+            hide-bottom-space
+            v-model="matrixSearchQuery"
+            placeholder="ค้นหารายการตรวจ หรือรหัสรายการ..."
+            class="search-input"
+          >
+            <template #prepend>
+              <q-icon name="search" size="18px" />
+            </template>
+          </q-input>
+        </div>
+
+        <div v-if="pagedMatrixItems.length" class="table-card">
           <div class="table-scroll">
             <table class="matrix-table">
               <thead>
@@ -259,7 +334,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in ITEM_CATALOG" :key="item.id">
+                <tr v-for="item in pagedMatrixItems" :key="item.id">
                   <td class="matrix-td-item">
                     <div class="matrix-item-title">{{ item.label }}</div>
                     <div class="matrix-item-code">{{ item.code }}</div>
@@ -269,6 +344,7 @@
                       dense
                       outlined
                       type="number"
+                      min="0"
                       prefix="฿"
                       class="matrix-rate-input"
                       :model-value="matrixRates[item.id]?.[r.id] ?? 0"
@@ -281,6 +357,51 @@
               </tbody>
             </table>
           </div>
+        </div>
+
+        <div v-else class="empty-state">
+          <q-icon name="search_off" size="28px" class="empty-icon" />
+          <div class="empty-title">ไม่พบรายการตรวจที่ตรงกับเงื่อนไข</div>
+          <div class="empty-sub">ลองแก้คำค้นหา</div>
+          <q-btn
+            no-caps
+            flat
+            dense
+            label="ล้างคำค้นหา"
+            class="empty-clear-btn"
+            @click="matrixSearchQuery = ''"
+          />
+        </div>
+
+        <!-- ===== Matrix pagination ===== -->
+        <div v-if="filteredMatrixItems.length" class="pagination-bar">
+          <div class="pagination-info">
+            แสดง {{ matrixPageStart + 1 }}–{{ matrixPageEnd }} จาก
+            {{ filteredMatrixItems.length }} รายการ
+          </div>
+
+          <q-pagination
+            v-model="matrixCurrentPage"
+            :max="matrixTotalPages"
+            :max-pages="6"
+            boundary-numbers
+            direction-links
+            dense
+            color="primary"
+            active-design="unelevated"
+            class="pagination-nav"
+          />
+
+          <q-select
+            dense
+            outlined
+            emit-value
+            map-options
+            hide-bottom-space
+            v-model="matrixPageSize"
+            :options="PAGE_SIZE_OPTIONS"
+            class="page-size-select"
+          />
         </div>
       </template>
 
@@ -399,7 +520,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { Notify } from "quasar";
 
 /* =========================================================================
@@ -421,6 +542,17 @@ function chipColor(index: number): string {
 }
 
 /* =========================================================================
+ * Pagination page-size options, shared by both paginated lists on this
+ * page (checkup sets grid and the reimbursement matrix table).
+ * ========================================================================= */
+
+const PAGE_SIZE_OPTIONS = [
+  { label: "6 รายการ/หน้า", value: 6 },
+  { label: "12 รายการ/หน้า", value: 12 },
+  { label: "24 รายการ/หน้า", value: 24 }
+];
+
+/* =========================================================================
  * View toggle: manage checkup sets vs. edit the reimbursement matrix
  * ========================================================================= */
 
@@ -434,7 +566,8 @@ const view = ref<View>("sets");
  * entry carries its own material/reagent cost, so a set's per-head cost is
  * always the sum of whatever tests are checked in — no separate manual
  * "cost per head" field to keep in sync. The same catalog also powers the
- * "filter by included test" checklist above the set grid.
+ * "filter by included test" checklist above the set grid and the rows of
+ * the reimbursement matrix.
  * ========================================================================= */
 
 interface CatalogItem {
@@ -510,7 +643,7 @@ const CATALOG_BY_ID: Readonly<Record<string, CatalogItem>> = Object.fromEntries(
 
 function getCatalogItem(id: string): CatalogItem {
   return (
-    CATALOG_BY_ID[id] ?? { id, label: id, icon: "help_outline", unitCost: 0 }
+    CATALOG_BY_ID[id] ?? { id, code: "", label: id, icon: "help_outline", unitCost: 0 }
   );
 }
 
@@ -560,7 +693,10 @@ function fmtBaht(amount: number): string {
  * `searchQuery` matches against a set's title and code. `filterItemIds`
  * narrows to sets that include every checked test (AND match) — ticking
  * more boxes narrows the result further, which matches how the filter
- * menu reads ("sets that have all of these tests").
+ * menu reads ("sets that have all of these tests"). The same matching
+ * logic backs both the q-table `filter-method` (so the grid only renders
+ * matching rows) and our own `filteredSets` computed (used for the "X of
+ * Y" count and the pagination range text).
  * ========================================================================= */
 
 const searchQuery = ref("");
@@ -576,24 +712,81 @@ const filterButtonLabel = computed(() =>
     : "กรองตามรายการตรวจ"
 );
 
-const filteredSets = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase();
-  return checkupSets.value.filter(s => {
-    const matchesQuery =
-      !q ||
-      s.title.toLowerCase().includes(q) ||
-      s.code.toLowerCase().includes(q);
-    const matchesItems =
-      !filterItemIds.value.length ||
-      filterItemIds.value.every(id => s.itemIds.includes(id));
-    return matchesQuery && matchesItems;
-  });
-});
+interface SetFilterTerms {
+  query: string;
+  itemIds: string[];
+}
+
+const setFilterTerms = computed<SetFilterTerms>(() => ({
+  query: searchQuery.value.trim().toLowerCase(),
+  itemIds: filterItemIds.value
+}));
+
+function matchesSetFilter(s: CheckupSet, terms: SetFilterTerms): boolean {
+  const matchesQuery =
+    !terms.query ||
+    s.title.toLowerCase().includes(terms.query) ||
+    s.code.toLowerCase().includes(terms.query);
+  const matchesItems =
+    !terms.itemIds.length || terms.itemIds.every(id => s.itemIds.includes(id));
+  return matchesQuery && matchesItems;
+}
+
+// q-table's expected filter-method signature: (rows, terms) => filtered rows.
+function filterSetRows(
+  rows: readonly CheckupSet[],
+  terms: SetFilterTerms
+): CheckupSet[] {
+  return rows.filter(s => matchesSetFilter(s, terms));
+}
+
+const filteredSets = computed(() =>
+  checkupSets.value.filter(s => matchesSetFilter(s, setFilterTerms.value))
+);
 
 function clearFilters(): void {
   searchQuery.value = "";
   filterItemIds.value = [];
 }
+
+/* =========================================================================
+ * Checkup-sets grid + pagination
+ *
+ * The card grid itself is rendered by q-table in `grid` mode (via the
+ * `item` slot), which handles slicing rows to the current page/rowsPerPage
+ * internally. We keep our own `setsPagination` ref as the single source of
+ * truth (bound to the table with v-model:pagination) so the pagination bar
+ * below the grid — built to match the rest of this app's UI rather than
+ * Quasar's default footer — can read/drive the same state.
+ * ========================================================================= */
+
+const setColumns = [
+  { name: "code", label: "รหัสชุดตรวจ", field: "code", align: "left" as const },
+  { name: "title", label: "ชื่อชุดตรวจ", field: "title", align: "left" as const }
+];
+
+const setsPagination = ref({ page: 1, rowsPerPage: 6 });
+
+const setsTotalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredSets.value.length / setsPagination.value.rowsPerPage))
+);
+
+const setsPageStart = computed(
+  () => (setsPagination.value.page - 1) * setsPagination.value.rowsPerPage
+);
+const setsPageEnd = computed(() =>
+  Math.min(setsPageStart.value + setsPagination.value.rowsPerPage, filteredSets.value.length)
+);
+
+// Reset to page 1 whenever the filtered set or page size changes, so the
+// pager never points past the end of a newly-narrowed result set.
+watch([searchQuery, filterItemIds, () => setsPagination.value.rowsPerPage], () => {
+  setsPagination.value.page = 1;
+});
+
+watch(setsTotalPages, max => {
+  if (setsPagination.value.page > max) setsPagination.value.page = max;
+});
 
 /* =========================================================================
  * Reimbursement rate matrix (checkup items x rights)
@@ -640,7 +833,7 @@ function setItemRate(
 ): void {
   const parsed = typeof value === "number" ? value : Number(value ?? 0);
   if (!matrixRates[itemId]) matrixRates[itemId] = {};
-  matrixRates[itemId][rightId] = Number.isFinite(parsed) ? parsed : 0;
+  matrixRates[itemId][rightId] = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
 function saveMatrixRates(): void {
@@ -650,6 +843,50 @@ function saveMatrixRates(): void {
     position: "top"
   });
 }
+
+/* =========================================================================
+ * Matrix search + pagination
+ * ========================================================================= */
+
+const matrixSearchQuery = ref("");
+
+const filteredMatrixItems = computed(() => {
+  const q = matrixSearchQuery.value.trim().toLowerCase();
+  if (!q) return ITEM_CATALOG;
+  return ITEM_CATALOG.filter(
+    item =>
+      item.label.toLowerCase().includes(q) || item.code.toLowerCase().includes(q)
+  );
+});
+
+const matrixPageSize = ref(6);
+const matrixCurrentPage = ref(1);
+
+const matrixTotalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredMatrixItems.value.length / matrixPageSize.value))
+);
+
+const matrixPageStart = computed(
+  () => (matrixCurrentPage.value - 1) * matrixPageSize.value
+);
+const matrixPageEnd = computed(() =>
+  Math.min(
+    matrixPageStart.value + matrixPageSize.value,
+    filteredMatrixItems.value.length
+  )
+);
+
+const pagedMatrixItems = computed(() =>
+  filteredMatrixItems.value.slice(matrixPageStart.value, matrixPageEnd.value)
+);
+
+watch([matrixSearchQuery, matrixPageSize], () => {
+  matrixCurrentPage.value = 1;
+});
+
+watch(matrixTotalPages, max => {
+  if (matrixCurrentPage.value > max) matrixCurrentPage.value = max;
+});
 
 /* =========================================================================
  * Create / edit dialog
@@ -911,11 +1148,6 @@ function confirmDelete(): void {
   color: #8a94a3;
 }
 
-.table-count {
-  font-size: 0.78rem;
-  color: #8a94a3;
-}
-
 .create-btn {
   background: #17a865;
   color: #ffffff;
@@ -925,24 +1157,52 @@ function confirmDelete(): void {
   padding: 0 14px;
 }
 
-/* ===== Search + filter toolbar ===== */
+/* ===== Search + filter toolbar =====
+   Now rendered inside the sets q-table's `top` slot (and, further down,
+   the matrix table's own toolbar), so it needs its own bottom margin —
+   it's no longer a flex sibling spaced by .kits-container's gap. */
 .filter-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 
 .search-input {
-  flex: 1 1 260px;
+  flex: 0 1 260px;
   min-width: 0;
 }
 
+.search-input :deep(.q-field__control) {
+  height: 32px;
+  min-height: 32px;
+}
+
+.search-input :deep(.q-field__marginal) {
+  height: 32px;
+  width: 32px;
+}
+
+.search-input :deep(.q-field__control-container) {
+  padding-top: 0;
+}
+
+.search-input :deep(input) {
+  font-size: 0.76rem;
+}
+
+.search-input :deep(.q-icon) {
+  font-size: 16px;
+}
+
 .filter-btn {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
   color: #4b5563;
   border-color: #e6e9ee;
+  min-height: 32px;
+  padding: 0 10px;
   flex: none;
 }
 
@@ -955,8 +1215,8 @@ function confirmDelete(): void {
 
 .filter-menu {
   padding: 14px;
-  width: 300px;
-  max-width: 86vw;
+  width: 380px;
+  max-width: 90vw;
 }
 
 .filter-menu-title {
@@ -966,11 +1226,11 @@ function confirmDelete(): void {
   margin-bottom: 10px;
 }
 
-.item-check-grid--menu {
+.item-check-grid.item-check-grid--menu {
   grid-template-columns: 1fr;
-  max-height: 280px;
+  max-height: 320px;
   overflow-y: auto;
-  padding-right: 2px;
+  padding-right: 6px;
 }
 
 .filter-menu-actions {
@@ -979,12 +1239,11 @@ function confirmDelete(): void {
   margin-top: 8px;
 }
 
-/* ===== Sets grid ===== */
-.sets-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 14px;
-  align-items: stretch;
+/* ===== Sets grid (rendered by q-table's grid-mode item slot; card sizing
+   comes from the col-12 / col-md-6 wrapper in the template, this class
+   only styles the q-table host element itself) ===== */
+.sets-table {
+  background: transparent;
 }
 
 .set-card {
@@ -1099,6 +1358,50 @@ function confirmDelete(): void {
   font-size: 0.74rem;
   font-weight: 600;
   color: #e5484d;
+}
+
+/* ===== Pagination bar (shared by sets grid + matrix table) ===== */
+.pagination-bar {
+  background: #ffffff;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pagination-info {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6b7280;
+  flex: none;
+}
+
+.pagination-nav {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+}
+
+.page-size-select {
+  width: 140px;
+  flex: none;
+}
+
+.page-size-select :deep(.q-field__control) {
+  height: 36px;
+  min-height: 36px;
+}
+
+.page-size-select :deep(.q-field__marginal) {
+  height: 36px;
+}
+
+.page-size-select :deep(.q-field__native) {
+  font-size: 0.78rem;
 }
 
 /* ===== Empty state ===== */
@@ -1362,12 +1665,12 @@ function confirmDelete(): void {
 
 .item-check {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   min-width: 0;
   border: 1px solid #e6e9ee;
   border-radius: 8px;
-  padding: 4px 10px 4px 2px;
+  padding: 6px 10px 6px 2px;
   cursor: pointer;
   transition:
     border-color 0.15s ease,
@@ -1379,13 +1682,18 @@ function confirmDelete(): void {
   background: #f0faf4;
 }
 
+.item-check :deep(.q-checkbox) {
+  margin-top: 2px;
+}
+
 .item-check-label {
   font-size: 0.78rem;
   color: #1a1f27;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
   min-width: 0;
+  padding-top: 2px;
 }
 
 .dialog-cost-preview {
@@ -1462,10 +1770,6 @@ function confirmDelete(): void {
   .header-toggle {
     grid-column: 1 / -1;
     justify-content: flex-start;
-  }
-
-  .sets-grid {
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   }
 
   .matrix-header-card {
@@ -1549,10 +1853,6 @@ function confirmDelete(): void {
     flex: none;
   }
 
-  .sets-grid {
-    grid-template-columns: 1fr;
-  }
-
   .set-card {
     padding: 14px;
   }
@@ -1588,6 +1888,24 @@ function confirmDelete(): void {
   .item-check-label {
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  .pagination-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .pagination-info {
+    text-align: center;
+  }
+
+  .pagination-nav {
+    justify-content: center;
+  }
+
+  .page-size-select {
+    width: 100%;
   }
 }
 </style>

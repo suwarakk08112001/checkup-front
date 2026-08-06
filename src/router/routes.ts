@@ -3,20 +3,13 @@ import type { RouteRecordRaw } from "vue-router";
 const routes: RouteRecordRaw[] = [
   {
     path: "/",
-    component: () => import("@/layouts/MainLayout.vue"),
-    children: [
-      { path: "", component: () => import("@/pages/IndexPage.vue") }
-      // { path: 'second', component: () => import('@/pages/SecondPage.vue') }
-    ]
-  },
-  {
-    path: "/",
     component: () => import("@/layouts/UserLayout.vue"),
     children: [
-      {
-        path: "dashboard",
-        component: () => import("@/pages/DashboardPage.vue")
-      },
+      // {
+      //   path: "dashboard",
+      //   component: () => import("@/pages/DashboardPage.vue")
+      // },
+      { path: "", component: () => import("@/pages/IndexPage.vue") },
       {
         path: "expenses",
         component: () => import("@/pages/ExpensePage.vue")
@@ -24,11 +17,24 @@ const routes: RouteRecordRaw[] = [
       {
         path: "kits",
         component: () => import("@/pages/TestkitPage.vue")
+      },
+      {
+        path: "cost-config",
+        component: () => import("@/pages/CostconfigPage.vue")
       }
       // { path: 'second', component: () => import('@/pages/SecondPage.vue') }
     ]
   },
+  {
+    path: "/",
+    component: () => import("@/layouts/MainLayout.vue"),
+    children: [
+      // { path: "", component: () => import("@/pages/IndexPage.vue") },
+      { path: "login", component: () => import("@/pages/LoginPage.vue") }
 
+      // { path: 'second', component: () => import('@/pages/SecondPage.vue') }
+    ]
+  },
   // Always leave this as last one,
   // but you can also remove it
   {
