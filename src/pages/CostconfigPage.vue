@@ -34,171 +34,188 @@
         </div>
       </div>
 
-      <!-- ===== Section row ===== -->
-      <div class="cc-section-row">
-        <span class="cc-section-label">
-          {{ activeTabConfig.label }}
-          <span class="cc-section-count">
-            ({{ filteredItems.length }} จาก {{ activeItems.length }} รายการ)
-          </span>
-        </span>
-        <div class="cc-section-actions">
+      <!-- ===== Catalog header card =====
+           Per-tab catalog title/subtitle/buttons, styled as its own light
+           card above the table (distinct from the dark page header up
+           top, which stays generic across all three tabs). -->
+      <div class="cc-catalog-card">
+        <div class="cc-catalog-header-row">
+          <div class="cc-catalog-icon">
+            <q-icon name="biotech" size="18px" />
+          </div>
+          <div class="cc-catalog-text">
+            <div class="cc-catalog-title">
+              {{ activeTabConfig.catalogTitleTh }}
+              <span class="cc-catalog-title-en">{{
+                activeTabConfig.catalogTitleEn
+              }}</span>
+            </div>
+          </div>
+          <div class="cc-catalog-actions">
+            <span class="cc-catalog-count">{{ filteredItems.length }} รายการ</span>
+            <q-btn
+              no-caps
+              flat
+              dense
+              icon="check_circle"
+              :label="activeTabConfig.saveLabel"
+              class="cc-secondary-btn"
+              @click="saveCatalog"
+            />
+            <q-btn
+              no-caps
+              unelevated
+              dense
+              icon="add"
+              :label="activeTabConfig.addLabel"
+              class="cc-primary-btn"
+              @click="openCreateDialog"
+            />
+          </div>
+        </div>
+        <div class="cc-catalog-sub">{{ activeTabConfig.catalogSubtitle }}</div>
+
+        <div class="cc-filter-row">
+          <div class="cc-filter-field">
+            <label class="cc-filter-label">ค้นหารายการ</label>
+            <q-input
+              dense
+              outlined
+              clearable
+              hide-bottom-space
+              v-model="searchQuery"
+              :placeholder="`ค้นหารหัส, ชื่อรายการ หรือ${activeTabConfig.vendorLabel}...`"
+              class="cc-search-input"
+            />
+          </div>
+
+          <div class="cc-filter-field">
+            <label class="cc-filter-label">หมวดหมู่</label>
+            <q-select
+              dense
+              outlined
+              clearable
+              emit-value
+              map-options
+              hide-bottom-space
+              v-model="categoryFilter"
+              :options="categoryFilterOptions"
+              placeholder="ทุกหมวดหมู่"
+              class="cc-category-select"
+            />
+          </div>
+
           <q-btn
+            v-if="hasActiveFilters"
             no-caps
-            outline
+            flat
             dense
-            icon="add"
-            label="เพิ่มรายการใหม่"
-            class="cc-add-btn"
-            @click="openCreateDialog"
-          />
-          <q-btn
-            no-caps
-            unelevated
-            dense
-            icon="check_circle"
-            label="บันทึกรายการต้นทุน"
-            class="cc-create-btn"
-            @click="saveCatalog"
+            icon="close"
+            label="ล้างตัวกรองทั้งหมด"
+            class="cc-clear-filters-btn"
+            @click="clearFilters"
           />
         </div>
-      </div>
-
-      <!-- ===== Search + category filter toolbar ===== -->
-      <div class="cc-filter-toolbar">
-        <q-input
-          dense
-          outlined
-          clearable
-          hide-bottom-space
-          v-model="searchQuery"
-          :placeholder="`ค้นหารหัส, ชื่อรายการ หรือ${activeTabConfig.vendorLabel}...`"
-          class="cc-search-input"
-        >
-          <template #prepend>
-            <q-icon name="search" size="18px" />
-          </template>
-        </q-input>
-
-        <q-select
-          dense
-          outlined
-          clearable
-          emit-value
-          map-options
-          hide-bottom-space
-          v-model="categoryFilter"
-          :options="categoryFilterOptions"
-          placeholder="กรองตามหมวดหมู่"
-          class="cc-category-select"
-        >
-          <template #prepend>
-            <q-icon name="filter_list" size="18px" />
-          </template>
-        </q-select>
-
-        <q-btn
-          v-if="hasActiveFilters"
-          no-caps
-          flat
-          dense
-          icon="close"
-          label="ล้างตัวกรองทั้งหมด"
-          class="cc-clear-filters-btn"
-          @click="clearFilters"
-        />
-      </div>
-
-      <!-- ===== Desktop / tablet table ===== -->
-      <div v-if="filteredItems.length" class="cc-table-card cc-desktop-table">
-        <div class="cc-table-scroll">
-          <table class="cc-table">
-            <thead>
-              <tr>
-                <th class="cc-th-code">รหัสรายการ</th>
-                <th class="cc-th-name">รายการ</th>
-                <th class="cc-th-category">หมวดหมู่</th>
-                <th class="cc-th-unit">หน่วยนับ</th>
-                <th class="cc-th-price">ราคาอ้างอิง (บาท)</th>
-                <th class="cc-th-vendor">{{ activeTabConfig.vendorLabel }}</th>
-                <th class="cc-th-actions">การจัดการ</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in filteredItems" :key="item.id">
-                <td class="cc-td-code">
-                  <span class="cc-code-chip">{{ item.code }}</span>
-                </td>
-                <td class="cc-td-name">{{ item.name }}</td>
-                <td class="cc-td-category">
-                  <span class="cc-category-chip">{{ item.category }}</span>
-                </td>
-                <td class="cc-td-unit">
-                  <q-select
-                    dense
-                    outlined
-                    use-input
-                    hide-selected
-                    fill-input
-                    new-value-mode="add-unique"
-                    :model-value="item.unit"
-                    :options="unitInputOptions"
-                    class="cc-unit-select"
-                    @update:model-value="val => setItemUnit(item.id, val)"
-                    @filter="filterUnitOptions"
-                  />
-                </td>
-                <td class="cc-td-price">
-                  <q-input
-                    dense
-                    outlined
-                    type="number"
-                    prefix="฿"
-                    class="cc-price-input"
-                    :model-value="item.price"
-                    @update:model-value="val => setItemPrice(item.id, val)"
-                  />
-                </td>
-                <td class="cc-td-vendor">{{ item.vendor }}</td>
-                <td class="cc-td-actions">
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    icon="edit"
-                    size="sm"
-                    class="cc-row-edit-btn"
-                    @click="openEditDialog(item)"
-                  />
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    icon="delete_outline"
-                    size="sm"
-                    class="cc-row-delete-btn"
-                    @click="requestDelete(item)"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <q-table
+        v-if="filteredItems.length"
+        flat
+        :rows="filteredItems"
+        :columns="ccColumns"
+        row-key="id"
+        v-model:pagination="tablePagination"
+        :rows-per-page-options="[5, 10, 20, 50]"
+        rows-per-page-label="Records per page:"
+        class="cc-qtable cc-desktop-table"
+      >
+        <template v-slot:body="props">
+          <q-tr :props="props">
+            <q-td key="no" :props="props" class="cc-td-no">
+              {{
+                (tablePagination.page - 1) * tablePagination.rowsPerPage +
+                props.rowIndex +
+                1
+              }}
+            </q-td>
+            <q-td key="code" :props="props" class="cc-td-code">
+              <span class="cc-code-text">{{ props.row.code }}</span>
+            </q-td>
+            <q-td key="name" :props="props" class="cc-td-name">
+              {{ props.row.name }}
+            </q-td>
+            <q-td key="category" :props="props" class="cc-td-category">
+              <span
+                class="cc-category-chip"
+                :class="categoryPillClass(props.row.category)"
+                >{{ props.row.category }}</span
+              >
+            </q-td>
+            <q-td key="unit" :props="props" class="cc-td-unit">
+              <q-select
+                dense
+                outlined
+                use-input
+                hide-selected
+                fill-input
+                new-value-mode="add-unique"
+                :model-value="props.row.unit"
+                :options="unitInputOptions"
+                class="cc-unit-select"
+                @update:model-value="val => setItemUnit(props.row.id, val)"
+                @filter="filterUnitOptions"
+              />
+            </q-td>
+            <q-td key="price" :props="props" class="cc-td-price">
+              <q-input
+                dense
+                borderless
+                type="number"
+                prefix="฿"
+                class="cc-price-input"
+                :model-value="props.row.price"
+                @update:model-value="val => setItemPrice(props.row.id, val)"
+              />
+            </q-td>
+            <q-td key="vendor" :props="props" class="cc-td-vendor">
+              {{ props.row.vendor }}
+            </q-td>
+            <q-td key="actions" :props="props" class="cc-td-actions">
+              <q-btn
+                flat
+                dense
+                icon="edit"
+                size="sm"
+                class="cc-row-edit-btn"
+                @click="openEditDialog(props.row)"
+              />
+              <q-btn
+                flat
+                dense
+                icon="delete_outline"
+                size="sm"
+                class="cc-row-delete-btn"
+                @click="requestDelete(props.row)"
+              />
+            </q-td>
+          </q-tr>
+        </template>
+      </q-table>
       </div>
 
       <!-- ===== Mobile card list ===== -->
       <div v-if="filteredItems.length" class="cc-mobile-list">
         <div
-          v-for="item in filteredItems"
+          v-for="item in pagedItems"
           :key="item.id"
           class="cc-mobile-card"
         >
           <div class="cc-mobile-card-top">
             <div>
-              <span class="cc-code-chip">{{ item.code }}</span>
+              <span class="cc-code-text">{{ item.code }}</span>
               <div class="cc-item-title">{{ item.name }}</div>
             </div>
-            <span class="cc-category-chip">{{ item.category }}</span>
+            <span class="cc-category-chip" :class="categoryPillClass(item.category)">{{
+              item.category
+            }}</span>
           </div>
 
           <div class="cc-mobile-vendor">{{ item.vendor }}</div>
@@ -254,6 +271,28 @@
               @click="openEditDialog(item)"
             />
           </div>
+        </div>
+
+        <!-- The desktop table above renders its own pagination footer;
+             on mobile that table is hidden (see cc-desktop-table media
+             query), so the card list gets an equivalent pager here,
+             reading/writing the same `tablePagination` state. -->
+        <div class="cc-mobile-pagination-bar">
+          <div class="cc-mobile-pagination-info">
+            แสดง {{ pagedRangeStart }}–{{ pagedRangeEnd }} จาก
+            {{ filteredItems.length }} รายการ
+          </div>
+          <q-pagination
+            v-model="tablePagination.page"
+            :max="mobileTotalPages"
+            :max-pages="5"
+            boundary-numbers
+            direction-links
+            dense
+            color="primary"
+            active-design="unelevated"
+            class="cc-mobile-pagination-nav"
+          />
         </div>
       </div>
 
@@ -368,7 +407,7 @@
             no-caps
             unelevated
             label="บันทึกรายการ"
-            class="cc-create-btn"
+            class="cc-primary-btn"
             @click="saveItem"
           />
         </q-card-actions>
@@ -410,7 +449,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { Notify } from "quasar";
 
 /* =========================================================================
@@ -432,6 +471,14 @@ interface TabConfig {
   icon: string;
   codePrefix: string;
   vendorLabel: string;
+  // Catalog header card shown above the table — title/subtitle/button
+  // wording specific to this tab's catalog (e.g. "Material & Reagents
+  // Catalog" for materials), distinct from the generic page header above.
+  catalogTitleTh: string;
+  catalogTitleEn: string;
+  catalogSubtitle: string;
+  addLabel: string;
+  saveLabel: string;
 }
 
 const TABS: readonly TabConfig[] = [
@@ -440,21 +487,38 @@ const TABS: readonly TabConfig[] = [
     label: "วัสดุ/น้ำยา",
     icon: "science",
     codePrefix: "MAT",
-    vendorLabel: "บริษัท/ผู้จัดจำหน่าย"
+    vendorLabel: "บริษัท/ผู้จัดจำหน่าย",
+    catalogTitleTh: "แคตตาล็อกต้นทุนน้ำยาตรวจวิเคราะห์และเวชภัณฑ์",
+    catalogTitleEn: "(Material & Reagents Catalog)",
+    catalogSubtitle:
+      "ราคาต้นทุนต่อหน่วย (บาท/เทสต์ หรือ บาท/ชิ้น) ใช้คำนวณต้นทุนต่อหัว",
+    addLabel: "เพิ่มรายการวัสดุ",
+    saveLabel: "บันทึกต้นทุนน้ำยา"
   },
   {
     id: "labor",
     label: "ค่าแรงบุคลากร",
     icon: "groups",
     codePrefix: "LAB",
-    vendorLabel: "หน่วยงาน/ผู้ว่าจ้าง"
+    vendorLabel: "หน่วยงาน/ผู้ว่าจ้าง",
+    catalogTitleTh: "แคตตาล็อกต้นทุนค่าแรงบุคลากร",
+    catalogTitleEn: "(Labor Cost Catalog)",
+    catalogSubtitle: "ค่าแรงต่อหน่วย (บาท/กะ หรือ บาท/วัน) ใช้คำนวณต้นทุนต่อหัว",
+    addLabel: "เพิ่มรายการค่าแรง",
+    saveLabel: "บันทึกค่าแรงบุคลากร"
   },
   {
     id: "vehicle",
     label: "ค่าพาหนะ/น้ำมัน",
     icon: "local_shipping",
     codePrefix: "VEH",
-    vendorLabel: "ผู้ให้บริการ/บริษัทเช่า"
+    vendorLabel: "ผู้ให้บริการ/บริษัทเช่า",
+    catalogTitleTh: "แคตตาล็อกต้นทุนค่าพาหนะและน้ำมัน",
+    catalogTitleEn: "(Vehicle & Fuel Cost Catalog)",
+    catalogSubtitle:
+      "ค่าใช้จ่ายต่อหน่วย (บาท/ลิตร หรือ บาท/เที่ยว) ใช้คำนวณต้นทุนต่อหัว",
+    addLabel: "เพิ่มรายการพาหนะ",
+    saveLabel: "บันทึกค่าพาหนะ/น้ำมัน"
   }
 ];
 
@@ -466,6 +530,12 @@ const activeTabConfig = computed(
 function switchTab(id: TabId): void {
   activeTab.value = id;
   clearFilters();
+  // FIX: the inline unit/category autocomplete option lists were left
+  // holding the *previous* tab's suggestions until the user typed into a
+  // filter box. Reset them here so switching tabs immediately shows the
+  // right suggestions.
+  unitInputOptions.value = [...UNIT_SUGGESTIONS[id]];
+  categoryInputOptions.value = [...CATEGORY_SUGGESTIONS[id]];
 }
 
 /* =========================================================================
@@ -608,8 +678,19 @@ const costData = reactive<Record<TabId, CostItem[]>>({
 
 const activeItems = computed(() => costData[activeTab.value]);
 
-function fmtBaht(amount: number): string {
-  return `฿${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Assigns each category name a consistent pastel pill color (cycling
+// through a fixed palette by a simple string hash), mirroring the
+// colored status pills in the reference tracking table. Deterministic per
+// category name so the same category always renders the same color.
+const CATEGORY_PILL_PALETTE = ["blue", "green", "amber", "purple", "teal"] as const;
+
+function categoryPillClass(category: string): string {
+  let hash = 0;
+  for (let i = 0; i < category.length; i++) {
+    hash = (hash * 31 + category.charCodeAt(i)) >>> 0;
+  }
+  const variant = CATEGORY_PILL_PALETTE[hash % CATEGORY_PILL_PALETTE.length];
+  return `cc-pill-${variant}`;
 }
 
 /* =========================================================================
@@ -648,6 +729,79 @@ function clearFilters(): void {
   searchQuery.value = "";
   categoryFilter.value = null;
 }
+
+/* =========================================================================
+ * Desktop table columns + pagination
+ *
+ * Columns power the q-table header only — every cell is rendered through
+ * the custom `body` slot in the template (chips, inline-editable unit/
+ * price, action buttons), same as the reimbursement matrix. Pagination
+ * state (`tablePagination`) is shared with the mobile card list below via
+ * `pagedItems`, so both views always show the same page of results, and
+ * resets to page 1 whenever the search, category filter, or active tab
+ * changes so it never points past the end of a newly-narrowed list.
+ * ========================================================================= */
+
+const ccColumns = computed(() => [
+  { name: "no", label: "ลำดับ", field: "id", align: "left" as const },
+  { name: "code", label: "รหัสรายการ", field: "code", align: "left" as const },
+  { name: "name", label: "รายการ", field: "name", align: "left" as const },
+  { name: "category", label: "หมวดหมู่", field: "category", align: "left" as const },
+  { name: "unit", label: "หน่วยนับ", field: "unit", align: "left" as const },
+  {
+    name: "price",
+    label: "ราคาอ้างอิง (บาท)",
+    field: "price",
+    align: "left" as const
+  },
+  {
+    name: "vendor",
+    label: activeTabConfig.value.vendorLabel,
+    field: "vendor",
+    align: "left" as const
+  },
+  { name: "actions", label: "การจัดการ", field: "id", align: "right" as const }
+]);
+
+const tablePagination = ref({ page: 1, rowsPerPage: 10 });
+
+watch([searchQuery, categoryFilter, activeTab], () => {
+  tablePagination.value.page = 1;
+});
+
+// FIX: deleting the last item on the last page (or shrinking rowsPerPage)
+// used to leave `tablePagination.page` pointing past the new last page,
+// showing a blank table/card list until the user manually paged back.
+// Clamp it whenever the filtered list size changes.
+watch(filteredItems, () => {
+  const maxPage = Math.max(
+    1,
+    Math.ceil(filteredItems.value.length / tablePagination.value.rowsPerPage)
+  );
+  if (tablePagination.value.page > maxPage) {
+    tablePagination.value.page = maxPage;
+  }
+});
+
+const pagedItems = computed(() => {
+  const start = (tablePagination.value.page - 1) * tablePagination.value.rowsPerPage;
+  return filteredItems.value.slice(start, start + tablePagination.value.rowsPerPage);
+});
+
+const pagedRangeStart = computed(() =>
+  filteredItems.value.length
+    ? (tablePagination.value.page - 1) * tablePagination.value.rowsPerPage + 1
+    : 0
+);
+const pagedRangeEnd = computed(() =>
+  Math.min(
+    tablePagination.value.page * tablePagination.value.rowsPerPage,
+    filteredItems.value.length
+  )
+);
+const mobileTotalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredItems.value.length / tablePagination.value.rowsPerPage))
+);
 
 /* =========================================================================
  * Inline live edits (unit + price) — same interaction as the reimbursement
@@ -825,7 +979,10 @@ function saveItem(): void {
       position: "top"
     });
   } else {
-    const id = `${tabId}-${Date.now()}`;
+    // FIX: Date.now() alone can collide if two items are added within the
+    // same millisecond (e.g. scripted/rapid submissions). Add a short
+    // random suffix so ids stay unique.
+    const id = `${tabId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     costData[tabId].push({
       id,
       code: form.code,
@@ -894,9 +1051,13 @@ function confirmDelete(): void {
   gap: 16px;
 }
 
-/* ===== Header (dark) ===== */
+/* ===== Header (light) =====
+   Matches the light header card style used elsewhere in the app (white
+   background, light-blue icon box, dark title, green-when-active toggle
+   buttons) instead of the previous dark navy gradient. */
 .cc-header-card {
-  background: linear-gradient(135deg, #101f35 0%, #0a1728 100%);
+  background: #ffffff;
+  border: 1px solid #e6e9ee;
   border-radius: 14px;
   padding: 18px 20px;
   display: grid;
@@ -909,8 +1070,8 @@ function confirmDelete(): void {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: rgba(23, 168, 101, 0.16);
-  color: #2ee08a;
+  background: #e6f0fb;
+  color: #1e6fd9;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -924,18 +1085,18 @@ function confirmDelete(): void {
 .cc-header-title {
   font-size: 1rem;
   font-weight: 800;
-  color: #ffffff;
+  color: #1a1f27;
   overflow-wrap: anywhere;
 }
 
 .cc-header-title-en {
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.55);
+  color: #6b7280;
 }
 
 .cc-header-sub {
   font-size: 0.8rem;
-  color: #8fb4e8;
+  color: #8a94a3;
   margin-top: 4px;
   overflow-wrap: anywhere;
 }
@@ -952,9 +1113,9 @@ function confirmDelete(): void {
   font-size: 0.76rem;
   font-weight: 600;
   border-radius: 8px;
-  color: rgba(255, 255, 255, 0.75);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #6b7280;
+  background: #ffffff;
+  border: 1px solid #e6e9ee;
   min-height: 40px;
   padding: 0 14px;
   transition:
@@ -973,67 +1134,136 @@ function confirmDelete(): void {
   border-color: #17a865;
 }
 
-/* ===== Section row ===== */
-.cc-section-row {
+/* ===== Catalog header card =====
+   Light card above the table — icon + title (green, matching the brand
+   accent) + subtitle (blue, matching the reimbursement matrix's sub-line
+   style elsewhere) + item count + per-tab add/save buttons. */
+.cc-catalog-card {
+  background: #ffffff;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Single header row — icon + title on the left, count + actions on the
+   right — matching the reference tracking table's header row. */
+.cc-catalog-header-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  flex-wrap: wrap;
 }
 
-.cc-section-label {
-  font-size: 0.86rem;
-  font-weight: 700;
+.cc-catalog-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #e6f0fb;
+  color: #2f6feb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.cc-catalog-text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.cc-catalog-title {
+  font-size: 0.92rem;
+  font-weight: 800;
   color: #1a1f27;
+  overflow-wrap: anywhere;
 }
 
-.cc-section-count {
+.cc-catalog-title-en {
   font-weight: 600;
   color: #8a94a3;
+  margin-left: 4px;
+  font-size: 0.82rem;
 }
 
-.cc-section-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.cc-catalog-sub {
+  font-size: 0.76rem;
+  color: #8a94a3;
+  overflow-wrap: anywhere;
 }
 
-.cc-add-btn {
-  font-size: 0.78rem;
-  font-weight: 700;
-  border-radius: 8px;
-  color: #1a1f27;
-  border-color: #d7dce3;
-  padding: 0 14px;
-}
-
-.cc-create-btn {
-  background: #17a865;
-  color: #ffffff;
-  font-size: 0.78rem;
-  font-weight: 700;
-  border-radius: 8px;
-  padding: 0 14px;
-}
-
-/* ===== Search + filter toolbar ===== */
-.cc-filter-toolbar {
+.cc-catalog-actions {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  flex: none;
 }
 
-.cc-search-input {
+.cc-catalog-count {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #8a94a3;
+  white-space: nowrap;
+}
+
+/* Primary CTA — solid blue button, matching the reference table's
+   "+ เพิ่ม..." button. This is the dominant action in the header. */
+.cc-primary-btn {
+  background: #2f6feb;
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 0 16px;
+}
+
+/* Secondary action — plain text button, demoted so the primary button
+   stays the single visual focal point like the reference header. */
+.cc-secondary-btn {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 0 8px;
+}
+
+/* ===== Search + filter row =====
+   No nested card/border — fields sit directly inside the catalog card,
+   labeled above each input, matching the reference tracking table's
+   filter-row layout exactly. */
+.cc-filter-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.cc-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cc-filter-field:first-child {
   flex: 1 1 260px;
-  min-width: 0;
 }
 
-.cc-category-select {
+.cc-filter-field:last-of-type {
   flex: 0 1 240px;
-  min-width: 0;
+}
+
+.cc-filter-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.cc-search-input,
+.cc-category-select {
+  width: 100%;
 }
 
 .cc-clear-filters-btn {
@@ -1041,54 +1271,49 @@ function confirmDelete(): void {
   font-weight: 600;
   color: #8a94a3;
   flex: none;
+  margin-bottom: 2px;
 }
 
-/* ===== Desktop / tablet table ===== */
-.cc-table-card {
+/* ===== Desktop / tablet table (row-mode q-table) =====
+   Light theme, matching the header/catalog cards above (previously this
+   was a dark navy gradient to match a dark header — now that the header
+   is light, the table follows suit so the whole page reads consistently). */
+.cc-qtable {
   background: #ffffff;
-  border: 1px solid #e6e9ee;
-  border-radius: 12px;
-  padding: 14px;
+  margin-top: 6px;
 }
 
-.cc-table-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+.cc-qtable :deep(thead tr) {
+  background: #eef1f6;
 }
 
-.cc-table {
-  border-collapse: collapse;
-  width: 100%;
-  min-width: 1020px;
-}
-
-.cc-table thead th {
-  font-size: 0.76rem;
+.cc-qtable :deep(thead th) {
+  font-size: 0.74rem;
   font-weight: 700;
-  color: #1a1f27;
-  text-align: left;
-  padding: 10px 14px 12px;
-  border-bottom: 2px solid #eef0f3;
+  color: #4b5563;
   white-space: nowrap;
 }
 
-.cc-th-unit {
-  min-width: 140px;
-}
-
-.cc-th-price {
-  min-width: 160px;
-}
-
-.cc-th-actions {
-  width: 90px;
-  text-align: right;
-}
-
-.cc-table tbody td {
-  padding: 8px 14px;
-  border-top: 1px solid #eef0f3;
+.cc-qtable :deep(tbody td) {
   vertical-align: middle;
+  border-color: #eef0f3;
+}
+
+.cc-qtable :deep(tbody tr:hover) {
+  background: #fafbfc;
+}
+
+.cc-qtable :deep(.q-table__bottom) {
+  color: #6b7280;
+  font-size: 0.78rem;
+  border-color: #eef0f3;
+}
+
+.cc-td-no {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #8a94a3;
+  width: 48px;
 }
 
 .cc-td-name {
@@ -1105,30 +1330,51 @@ function confirmDelete(): void {
   white-space: nowrap;
 }
 
-.cc-code-chip {
-  display: inline-flex;
-  align-items: center;
-  background: #eef7f1;
-  border: 1px solid #cdeadb;
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 0.72rem;
+/* Plain bold blue text (no chip background), matching the reference
+   table's clickable-looking code column. */
+.cc-code-text {
+  font-size: 0.82rem;
   font-weight: 700;
-  color: #17a865;
+  color: #2f6feb;
   white-space: nowrap;
 }
 
+/* Category pill — color is assigned per category via categoryPillClass()
+   so different categories are visually distinguishable, mirroring the
+   reference table's colored status pills. */
 .cc-category-chip {
   display: inline-flex;
   align-items: center;
-  background: #f8f9fb;
-  border: 1px solid #e6e9ee;
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 0.72rem;
   font-weight: 600;
-  color: #4b5563;
   white-space: nowrap;
+}
+
+.cc-pill-blue {
+  background: #e6f0fb;
+  color: #2f6feb;
+}
+
+.cc-pill-green {
+  background: #e8f8ef;
+  color: #17a865;
+}
+
+.cc-pill-amber {
+  background: #fef3e0;
+  color: #b45309;
+}
+
+.cc-pill-purple {
+  background: #f3e8fd;
+  color: #7c3aed;
+}
+
+.cc-pill-teal {
+  background: #e3f6f5;
+  color: #0f8b8d;
 }
 
 .cc-unit-select {
@@ -1137,10 +1383,18 @@ function confirmDelete(): void {
 
 .cc-price-input {
   max-width: 130px;
+  font-weight: 700;
 }
 
 .cc-price-input :deep(input) {
   text-align: left;
+  color: #2f6feb;
+  font-weight: 700;
+}
+
+.cc-price-input :deep(.q-field__prefix) {
+  color: #2f6feb;
+  font-weight: 700;
 }
 
 .cc-td-actions {
@@ -1149,11 +1403,11 @@ function confirmDelete(): void {
 }
 
 .cc-row-edit-btn {
-  color: #1e6fd9;
+  color: #2f6feb;
 }
 
 .cc-row-delete-btn {
-  color: #e5484d;
+  color: #dc2626;
 }
 
 /* ===== Mobile card list (hidden on desktop) ===== */
@@ -1220,6 +1474,23 @@ function confirmDelete(): void {
 
 .cc-mobile-card-actions .q-btn {
   flex: 1;
+}
+
+.cc-mobile-pagination-bar {
+  background: #ffffff;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.cc-mobile-pagination-info {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #6b7280;
 }
 
 /* ===== Empty state ===== */
@@ -1417,32 +1688,36 @@ function confirmDelete(): void {
     justify-content: flex-start;
   }
 
-  .cc-section-row {
+  .cc-catalog-header-row {
+    flex-wrap: wrap;
+  }
+
+  .cc-catalog-actions {
+    width: 100%;
     flex-direction: column;
     align-items: stretch;
   }
 
-  .cc-section-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .cc-add-btn,
-  .cc-create-btn {
+  .cc-primary-btn,
+  .cc-secondary-btn {
     width: 100%;
   }
 
-  .cc-filter-toolbar {
+  .cc-filter-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
+    gap: 10px;
   }
 
-  .cc-search-input,
-  .cc-category-select,
+  .cc-filter-field:first-child,
+  .cc-filter-field:last-of-type {
+    flex: none;
+    width: 100%;
+  }
+
   .cc-clear-filters-btn {
     width: 100%;
-    flex: none;
+    margin-bottom: 0;
   }
 
   /* Swap: table hides, card list takes over */

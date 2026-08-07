@@ -63,12 +63,22 @@
           />
         </div>
 
+        <!--
+          ===== Sets grid, following the reference q-table pattern =====
+          grid mode + hide-header, same as the provided example. The search
+          box lives in the `top-right` slot (debounced, borderless,
+          v-model bound directly to `filter`) exactly like the reference —
+          the item-filter menu and "clear all" button move into `top-left`
+          so they stay available without cluttering the search slot.
+          `hide-bottom` is dropped so q-table renders its own default
+          pagination footer (rows-per-page dropdown, "X-Y of Z", prev/next
+          arrows) instead of the separate custom pagination bar below.
+        -->
         <q-table
           flat
           borderless
           grid
           hide-header
-          hide-bottom
           :rows="checkupSets"
           :columns="setColumns"
           row-key="id"
@@ -77,24 +87,8 @@
           v-model:pagination="setsPagination"
           class="sets-table"
         >
-          <!-- ===== Search + item filter toolbar, now part of the table
-               itself (top slot) rather than a sibling element ===== -->
-          <template v-slot:top>
+          <template v-slot:top-left>
             <div class="filter-toolbar">
-              <q-input
-                dense
-                outlined
-                clearable
-                hide-bottom-space
-                v-model="searchQuery"
-                placeholder="ค้นหาชื่อชุดตรวจ หรือรหัสชุดตรวจ..."
-                class="search-input"
-              >
-                <template #prepend>
-                  <q-icon name="search" size="18px" />
-                </template>
-              </q-input>
-
               <q-btn
                 no-caps
                 outline
@@ -153,6 +147,28 @@
                 @click="clearFilters"
               />
             </div>
+          </template>
+
+          <!-- Search box, same shape as the reference table:
+               borderless, dense, debounce="300", v-model + append icon.
+               @clear resets the model directly — with `debounce` set,
+               the clear button's emitted empty value can otherwise get
+               absorbed by the debounce timer and the text won't disappear. -->
+          <template v-slot:top-right>
+            <q-input
+              borderless
+              dense
+              debounce="300"
+              clearable
+              v-model="searchQuery"
+              placeholder="ค้นหาชื่อชุดตรวจ หรือรหัสชุดตรวจ..."
+              class="search-input"
+              @clear="searchQuery = ''"
+            >
+              <template v-slot:append>
+                <q-icon name="search" />
+              </template>
+            </q-input>
           </template>
 
           <template v-slot:item="scope">
@@ -243,37 +259,6 @@
             </div>
           </template>
         </q-table>
-
-        <!-- ===== Sets pagination ===== -->
-        <div v-if="filteredSets.length" class="pagination-bar">
-          <div class="pagination-info">
-            แสดง {{ setsPageStart + 1 }}–{{ setsPageEnd }} จาก
-            {{ filteredSets.length }} ชุด
-          </div>
-
-          <q-pagination
-            v-model="setsPagination.page"
-            :max="setsTotalPages"
-            :max-pages="6"
-            boundary-numbers
-            direction-links
-            dense
-            color="primary"
-            active-design="unelevated"
-            class="pagination-nav"
-          />
-
-          <q-select
-            dense
-            outlined
-            emit-value
-            map-options
-            hide-bottom-space
-            v-model="setsPagination.rowsPerPage"
-            :options="PAGE_SIZE_OPTIONS"
-            class="page-size-select"
-          />
-        </div>
       </template>
 
       <!-- ===== Reimbursement matrix view ===== -->
@@ -294,115 +279,103 @@
               (บาท)
             </div>
           </div>
-          <q-btn
-            no-caps
-            unelevated
-            icon="check_circle"
-            label="บันทึกตารางเรทเบิกจ่าย"
-            class="matrix-save-btn"
-            @click="saveMatrixRates"
-          />
-        </div>
-
-        <!-- ===== Matrix search toolbar ===== -->
-        <div class="filter-toolbar">
-          <q-input
-            dense
-            outlined
-            clearable
-            hide-bottom-space
-            v-model="matrixSearchQuery"
-            placeholder="ค้นหารายการตรวจ หรือรหัสรายการ..."
-            class="search-input"
-          >
-            <template #prepend>
-              <q-icon name="search" size="18px" />
-            </template>
-          </q-input>
-        </div>
-
-        <div v-if="pagedMatrixItems.length" class="table-card">
-          <div class="table-scroll">
-            <table class="matrix-table">
-              <thead>
-                <tr>
-                  <th class="matrix-th-item">รายการตรวจ (CHECKUP ITEM)</th>
-                  <th v-for="r in rights" :key="r.id" class="matrix-th-right">
-                    <div class="matrix-th-right-code">{{ r.label }}</div>
-                    <div class="matrix-th-right-sub">{{ r.subLabel }}</div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in pagedMatrixItems" :key="item.id">
-                  <td class="matrix-td-item">
-                    <div class="matrix-item-title">{{ item.label }}</div>
-                    <div class="matrix-item-code">{{ item.code }}</div>
-                  </td>
-                  <td v-for="r in rights" :key="r.id" class="matrix-td-rate">
-                    <q-input
-                      dense
-                      outlined
-                      type="number"
-                      min="0"
-                      prefix="฿"
-                      class="matrix-rate-input"
-                      :model-value="matrixRates[item.id]?.[r.id] ?? 0"
-                      @update:model-value="
-                        val => setItemRate(item.id, r.id, val)
-                      "
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="matrix-header-actions">
+            <span class="matrix-header-count"
+              >{{ filteredMatrixItems.length }} รายการ</span
+            >
+            <q-btn
+              no-caps
+              unelevated
+              icon="check_circle"
+              label="บันทึกตารางเรทเบิกจ่าย"
+              class="matrix-save-btn"
+              @click="saveMatrixRates"
+            />
           </div>
         </div>
 
-        <div v-else class="empty-state">
-          <q-icon name="search_off" size="28px" class="empty-icon" />
-          <div class="empty-title">ไม่พบรายการตรวจที่ตรงกับเงื่อนไข</div>
-          <div class="empty-sub">ลองแก้คำค้นหา</div>
-          <q-btn
-            no-caps
-            flat
-            dense
-            label="ล้างคำค้นหา"
-            class="empty-clear-btn"
-            @click="matrixSearchQuery = ''"
-          />
-        </div>
+        <!--
+          ===== Rate matrix, same bordered row-table + built-in footer
+          structure as the reimbursement tracking table: a search box
+          above a bordered table with a shaded header row, and the
+          default q-table pagination footer at the bottom (rows-per-page
+          dropdown + "X-Y of Z" + prev/next). Each rate cell is rendered
+          through a custom `body` slot so it stays an editable q-input
+          bound straight to `matrixRates`, exactly as before.
+        -->
+        <q-table
+          flat
+          bordered
+          :rows="ITEM_CATALOG"
+          :columns="matrixColumns"
+          row-key="id"
+          :filter="matrixSearchQuery"
+          :filter-method="filterMatrixRows"
+          v-model:pagination="matrixTablePagination"
+          :rows-per-page-options="[5, 10, 20, 50]"
+          class="matrix-qtable"
+        >
+          <template v-slot:top-right>
+            <q-input
+              borderless
+              dense
+              debounce="300"
+              clearable
+              v-model="matrixSearchQuery"
+              placeholder="ค้นหารายการตรวจ หรือรหัสรายการ..."
+              class="search-input"
+              @clear="matrixSearchQuery = ''"
+            >
+              <template v-slot:append>
+                <q-icon name="search" />
+              </template>
+            </q-input>
+          </template>
 
-        <!-- ===== Matrix pagination ===== -->
-        <div v-if="filteredMatrixItems.length" class="pagination-bar">
-          <div class="pagination-info">
-            แสดง {{ matrixPageStart + 1 }}–{{ matrixPageEnd }} จาก
-            {{ filteredMatrixItems.length }} รายการ
-          </div>
+          <template v-slot:body="props">
+            <q-tr :props="props">
+              <q-td key="item" :props="props" class="matrix-td-item">
+                <div class="matrix-item-title">{{ props.row.label }}</div>
+                <div class="matrix-item-code">{{ props.row.code }}</div>
+              </q-td>
+              <q-td
+                v-for="r in rights"
+                :key="r.id"
+                :props="props"
+                class="matrix-td-rate"
+              >
+                <q-input
+                  dense
+                  outlined
+                  type="number"
+                  min="0"
+                  prefix="฿"
+                  class="matrix-rate-input"
+                  :model-value="matrixRates[props.row.id]?.[r.id] ?? 0"
+                  @update:model-value="
+                    val => setItemRate(props.row.id, r.id, val)
+                  "
+                />
+              </q-td>
+            </q-tr>
+          </template>
 
-          <q-pagination
-            v-model="matrixCurrentPage"
-            :max="matrixTotalPages"
-            :max-pages="6"
-            boundary-numbers
-            direction-links
-            dense
-            color="primary"
-            active-design="unelevated"
-            class="pagination-nav"
-          />
-
-          <q-select
-            dense
-            outlined
-            emit-value
-            map-options
-            hide-bottom-space
-            v-model="matrixPageSize"
-            :options="PAGE_SIZE_OPTIONS"
-            class="page-size-select"
-          />
-        </div>
+          <template v-slot:no-data>
+            <div class="empty-state">
+              <q-icon name="search_off" size="28px" class="empty-icon" />
+              <div class="empty-title">ไม่พบรายการตรวจที่ตรงกับเงื่อนไข</div>
+              <div class="empty-sub">ลองแก้คำค้นหา</div>
+              <q-btn
+                no-caps
+                flat
+                dense
+                label="ล้างคำค้นหา"
+                class="empty-clear-btn"
+                @click="matrixSearchQuery = ''"
+              />
+            </div>
+          </template>
+        </q-table>
       </template>
 
       <!-- ===== Create / edit set dialog ===== -->
@@ -767,25 +740,10 @@ const setColumns = [
 
 const setsPagination = ref({ page: 1, rowsPerPage: 6 });
 
-const setsTotalPages = computed(() =>
-  Math.max(1, Math.ceil(filteredSets.value.length / setsPagination.value.rowsPerPage))
-);
-
-const setsPageStart = computed(
-  () => (setsPagination.value.page - 1) * setsPagination.value.rowsPerPage
-);
-const setsPageEnd = computed(() =>
-  Math.min(setsPageStart.value + setsPagination.value.rowsPerPage, filteredSets.value.length)
-);
-
 // Reset to page 1 whenever the filtered set or page size changes, so the
 // pager never points past the end of a newly-narrowed result set.
 watch([searchQuery, filterItemIds, () => setsPagination.value.rowsPerPage], () => {
   setsPagination.value.page = 1;
-});
-
-watch(setsTotalPages, max => {
-  if (setsPagination.value.page > max) setsPagination.value.page = max;
 });
 
 /* =========================================================================
@@ -845,7 +803,13 @@ function saveMatrixRates(): void {
 }
 
 /* =========================================================================
- * Matrix search + pagination
+ * Matrix search + table
+ *
+ * The matrix is a row-mode q-table (bordered, shaded header) rather than
+ * a plain HTML table, so it gets the same built-in pagination footer as
+ * the sets grid. `filteredMatrixItems` still exists for the header's item
+ * count and the search-input's "clear" affordance; `filterMatrixRows` is
+ * the filter-method q-table itself calls to decide which rows to show.
  * ========================================================================= */
 
 const matrixSearchQuery = ref("");
@@ -859,33 +823,41 @@ const filteredMatrixItems = computed(() => {
   );
 });
 
-const matrixPageSize = ref(6);
-const matrixCurrentPage = ref(1);
+function filterMatrixRows(
+  rows: readonly CatalogItem[],
+  terms: string
+): CatalogItem[] {
+  const q = terms.trim().toLowerCase();
+  if (!q) return [...rows];
+  return rows.filter(
+    item => item.label.toLowerCase().includes(q) || item.code.toLowerCase().includes(q)
+  );
+}
 
-const matrixTotalPages = computed(() =>
-  Math.max(1, Math.ceil(filteredMatrixItems.value.length / matrixPageSize.value))
-);
+// Column definitions for the row-mode matrix table: the item name/code
+// column plus one column per right. Only `name`/`label` are actually used
+// (header rendering + the `item` cell) — the rate cells are drawn entirely
+// through the custom `body` slot in the template, keyed off `rights`
+// directly, so no `field`/`format` is needed on the right-hand columns.
+const matrixColumns = computed(() => [
+  {
+    name: "item",
+    label: "รายการตรวจ (CHECKUP ITEM)",
+    field: "label",
+    align: "left" as const
+  },
+  ...rights.map(r => ({
+    name: r.id,
+    label: `${r.label} — ${r.subLabel}`,
+    field: r.id,
+    align: "center" as const
+  }))
+]);
 
-const matrixPageStart = computed(
-  () => (matrixCurrentPage.value - 1) * matrixPageSize.value
-);
-const matrixPageEnd = computed(() =>
-  Math.min(
-    matrixPageStart.value + matrixPageSize.value,
-    filteredMatrixItems.value.length
-  )
-);
+const matrixTablePagination = ref({ page: 1, rowsPerPage: 10 });
 
-const pagedMatrixItems = computed(() =>
-  filteredMatrixItems.value.slice(matrixPageStart.value, matrixPageEnd.value)
-);
-
-watch([matrixSearchQuery, matrixPageSize], () => {
-  matrixCurrentPage.value = 1;
-});
-
-watch(matrixTotalPages, max => {
-  if (matrixCurrentPage.value > max) matrixCurrentPage.value = max;
+watch(matrixSearchQuery, () => {
+  matrixTablePagination.value.page = 1;
 });
 
 /* =========================================================================
@@ -1157,43 +1129,21 @@ function confirmDelete(): void {
   padding: 0 14px;
 }
 
-/* ===== Search + filter toolbar =====
-   Now rendered inside the sets q-table's `top` slot (and, further down,
-   the matrix table's own toolbar), so it needs its own bottom margin —
-   it's no longer a flex sibling spaced by .kits-container's gap. */
+/* ===== Filter toolbar (top-left slot: item-filter menu + clear-all) ===== */
 .filter-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
 }
 
 .search-input {
-  flex: 0 1 260px;
-  min-width: 0;
-}
-
-.search-input :deep(.q-field__control) {
-  height: 32px;
-  min-height: 32px;
-}
-
-.search-input :deep(.q-field__marginal) {
-  height: 32px;
-  width: 32px;
-}
-
-.search-input :deep(.q-field__control-container) {
-  padding-top: 0;
+  width: 260px;
+  max-width: 100%;
 }
 
 .search-input :deep(input) {
-  font-size: 0.76rem;
-}
-
-.search-input :deep(.q-icon) {
-  font-size: 16px;
+  font-size: 0.82rem;
 }
 
 .filter-btn {
@@ -1244,6 +1194,25 @@ function confirmDelete(): void {
    only styles the q-table host element itself) ===== */
 .sets-table {
   background: transparent;
+}
+
+.sets-table :deep(.q-table__top) {
+  padding: 4px 4px 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* q-table renders top-left/top-right slot content as flex children —
+   without min-width: 0 + flex-basis, a long filter button next to a
+   fixed-width search input has no room to shrink and the two collide.
+   Letting each side wrap to its own line on narrow widths fixes it. */
+.sets-table :deep(.q-table__top > div) {
+  flex: 1 1 auto;
+  min-width: 240px;
+}
+
+.sets-table :deep(.q-table__top-right) {
+  justify-content: flex-end;
 }
 
 .set-card {
@@ -1487,6 +1456,20 @@ function confirmDelete(): void {
   overflow-wrap: anywhere;
 }
 
+.matrix-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+}
+
+.matrix-header-count {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #8a94a3;
+  white-space: nowrap;
+}
+
 .matrix-save-btn {
   background: #17a865;
   color: #ffffff;
@@ -1497,65 +1480,53 @@ function confirmDelete(): void {
   white-space: nowrap;
 }
 
-/* ===== Reimbursement matrix table ===== */
-.table-card {
+/* ===== Reimbursement matrix table (row-mode q-table) =====
+   Bordered cells + a shaded header row, matching the reference tracking
+   table's look. Search box sits in the table's own `top-right` slot, and
+   pagination uses q-table's built-in footer — no separate card/scroll
+   wrapper or custom pagination bar needed anymore. */
+.matrix-qtable {
   background: #ffffff;
-  border: 1px solid #e6e9ee;
   border-radius: 12px;
-  padding: 14px;
+  overflow: hidden;
 }
 
-.table-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+.matrix-qtable :deep(.q-table__top) {
+  padding: 10px 14px;
+  border-bottom: 1px solid #eef0f3;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.matrix-table {
-  border-collapse: collapse;
-  width: 100%;
-  min-width: 760px;
+/* Same fix as the sets grid's toolbar: without a minimum width, the
+   top-right container can be squeezed by q-table's layout and the search
+   placeholder text gets clipped against the box edge. */
+.matrix-qtable :deep(.q-table__top > div) {
+  flex: 1 1 auto;
+  min-width: 240px;
 }
 
-.matrix-table thead th {
-  font-size: 0.78rem;
+.matrix-qtable :deep(.q-table__top-right) {
+  justify-content: flex-end;
+}
+
+.matrix-qtable :deep(thead tr) {
+  background: #f8f9fb;
+}
+
+.matrix-qtable :deep(thead th) {
+  font-size: 0.76rem;
   font-weight: 700;
   color: #1a1f27;
-  text-align: left;
-  padding: 10px 14px 12px;
-  border-bottom: 2px solid #eef0f3;
-  vertical-align: bottom;
-}
-
-.matrix-th-item {
-  min-width: 220px;
-}
-
-.matrix-th-right {
-  text-align: center;
-  min-width: 130px;
-}
-
-.matrix-th-right-code {
-  font-weight: 800;
-  color: #1a1f27;
-}
-
-.matrix-th-right-sub {
-  font-size: 0.68rem;
-  font-weight: 500;
-  color: #8a94a3;
   white-space: normal;
-  margin-top: 2px;
 }
 
-.matrix-table tbody td {
-  padding: 10px 14px;
-  border-top: 1px solid #eef0f3;
+.matrix-qtable :deep(tbody td) {
   vertical-align: middle;
 }
 
-.matrix-td-item {
-  min-width: 220px;
+.matrix-qtable :deep(tbody tr:hover) {
+  background: #fafbfc;
 }
 
 .matrix-item-title {
@@ -1571,6 +1542,10 @@ function confirmDelete(): void {
   color: #1e6fd9;
   text-transform: uppercase;
   margin-top: 2px;
+}
+
+.matrix-td-item {
+  min-width: 220px;
 }
 
 .matrix-td-rate {
@@ -1777,9 +1752,14 @@ function confirmDelete(): void {
     row-gap: 10px;
   }
 
-  .matrix-save-btn {
+  .matrix-header-actions {
     grid-column: 1 / -1;
+    justify-content: space-between;
     width: 100%;
+  }
+
+  .matrix-save-btn {
+    flex: 1;
   }
 }
 
