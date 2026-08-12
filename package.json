@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@quasar/extras": "^2.0.0",
+    "axios": "^1.19.0",
     "pinia": "^3.0.1",
     "quasar": "^2.20.0",
     "vue": "^3.5.22",
@@ -39,7 +40,7 @@
     "autoprefixer": "^10.4.27",
     "oxfmt": "^0.x",
     "oxlint": "^1.x",
-    "oxlint-tsgolint": "^0.x",
+    "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.9.6",
     "typescript": "^6.0.0",
     "vue-tsc": "^3.3.3"
