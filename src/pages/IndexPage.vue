@@ -298,7 +298,16 @@
             จำนวนผู้รับบริการแยกตามสิทธิ์การรักษา
           </div>
 
-          <div class="hbar-scroll">
+          <div v-if="isLoadingBenefitTotals" class="hbar-loading">
+            กำลังโหลดข้อมูล...
+          </div>
+          <div
+            v-else-if="revenueMix.length === 0"
+            class="hbar-empty"
+          >
+            ไม่มีข้อมูลสำหรับช่วงเวลานี้
+          </div>
+          <div v-else class="hbar-scroll">
             <svg
               class="hbar-svg"
               :viewBox="`0 0 ${HBAR_CHART.width} ${HBAR_CHART.height}`"
@@ -358,10 +367,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { Notify } from "quasar";
 import * as XLSX from "xlsx";
-
+import { api } from '@/boot/axios';
+import type { AxiosError } from 'axios';
 /* =========================================================================
  * Shared design tokens
  * ========================================================================= */
@@ -655,105 +665,6 @@ interface RevenueSource {
   color: string;
 }
 
-const REVENUE_MIX_BY_PERIOD: Readonly<
-  Record<string, readonly RevenueSource[]>
-> = {
-  all: [
-    {
-      label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"],
-      value: 330,
-      color: COLORS.revenue
-    },
-    {
-      label: ["ประกันสังคม", "(ม.33/ม.39)"],
-      value: 195,
-      color: COLORS.revenue
-    },
-    {
-      label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"],
-      value: 145,
-      color: COLORS.revenue
-    },
-    {
-      label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"],
-      value: 95,
-      color: COLORS.revenue
-    }
-  ],
-  q1: [
-    {
-      label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"],
-      value: 80,
-      color: COLORS.revenue
-    },
-    { label: ["ประกันสังคม", "(ม.33/ม.39)"], value: 47, color: COLORS.revenue },
-    {
-      label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"],
-      value: 35,
-      color: COLORS.revenue
-    },
-    {
-      label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"],
-      value: 23,
-      color: COLORS.revenue
-    }
-  ],
-  q2: [
-    {
-      label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"],
-      value: 113,
-      color: COLORS.revenue
-    },
-    { label: ["ประกันสังคม", "(ม.33/ม.39)"], value: 67, color: COLORS.revenue },
-    {
-      label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"],
-      value: 50,
-      color: COLORS.revenue
-    },
-    {
-      label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"],
-      value: 33,
-      color: COLORS.revenue
-    }
-  ],
-  q3: [
-    {
-      label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"],
-      value: 69,
-      color: COLORS.revenue
-    },
-    { label: ["ประกันสังคม", "(ม.33/ม.39)"], value: 41, color: COLORS.revenue },
-    {
-      label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"],
-      value: 30,
-      color: COLORS.revenue
-    },
-    {
-      label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"],
-      value: 20,
-      color: COLORS.revenue
-    }
-  ],
-  q4: [
-    {
-      label: ["บัตรทอง (สปสช./", "หลักประกันสุขภาพ)"],
-      value: 68,
-      color: COLORS.revenue
-    },
-    { label: ["ประกันสังคม", "(ม.33/ม.39)"], value: 40, color: COLORS.revenue },
-    {
-      label: ["จ่ายตรงข้าราชการ", "(กรมบัญชีกลาง)"],
-      value: 30,
-      color: COLORS.revenue
-    },
-    {
-      label: ["องค์กรปกครองส่วนท้องถิ่น", "(อปท.)"],
-      value: 19,
-      color: COLORS.revenue
-    }
-  ]
-};
-
 const PATIENTS_BY_PERIOD: Readonly<Record<string, number>> = {
   all: 610,
   q1: 148,
@@ -769,6 +680,84 @@ const PLAN_PERCENT_BY_PERIOD: Readonly<Record<string, number>> = {
   q3: 69,
   q4: 74
 };
+
+/* =========================================================================
+ * Revenue mix: fetched from /dashboard/totalbenefit (replaces the old
+ * REVENUE_MIX_BY_PERIOD mock map — that data is gone now that this is
+ * wired to the real API).
+ * ========================================================================= */
+
+// Adjust to wherever the project's real API base URL is configured.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+
+interface BenefitTotal {
+  benefitId: number;
+  benefitname: string | null;
+  total: number;
+}
+
+// "q1".."q4" -> "1".."4", "all" -> "all"
+function toQuaterParam(period: string): string {
+  return period.startsWith("q") ? period.slice(1) : period;
+}
+
+const benefitTotals = ref<BenefitTotal[]>([]);
+const isLoadingBenefitTotals = ref(false);
+
+async function fetchBenefitTotals(): Promise<void> {
+  if (!fiscalYear.value) {
+    benefitTotals.value = [];
+    return;
+  }
+
+  isLoadingBenefitTotals.value = true;
+  try {
+    const res = await api.get<BenefitTotal[]>("/dashboard/totalbenefit", {
+      params: {
+        financialYear: fiscalYear.value,
+        quater: toQuaterParam(activePeriod.value)
+      }
+    });
+    benefitTotals.value = res.data;
+  } catch (err) {
+    const error = err as AxiosError;
+    console.error("Failed to fetch benefit totals:", error);
+    Notify.create({
+      type: "negative",
+      message: "ดึงข้อมูลสิทธิ์การรักษาไม่สำเร็จ",
+      caption: error.response
+        ? `HTTP ${error.response.status}`
+        : error.message,
+      position: "top"
+    });
+    benefitTotals.value = [];
+  } finally {
+    isLoadingBenefitTotals.value = false;
+  }
+}
+
+// Re-fetch whenever the toolbar's year or period changes.
+watch([fiscalYear, activePeriod], fetchBenefitTotals, { immediate: true });
+
+// Cycles through the palette so each benefit gets a distinguishable bar
+// color instead of every row rendering in the same COLORS.revenue blue.
+const BENEFIT_COLOR_CYCLE: readonly string[] = [
+  COLORS.revenue,
+  COLORS.purple,
+  COLORS.warning,
+  COLORS.info,
+  COLORS.profit
+];
+
+const revenueMix = computed<RevenueSource[]>(() =>
+  benefitTotals.value
+    .filter(b => b.total > 0)
+    .map((b, i) => ({
+      label: [b.benefitname ?? "ไม่ระบุสิทธิ์"],
+      value: b.total,
+      color: BENEFIT_COLOR_CYCLE[i % BENEFIT_COLOR_CYCLE.length]
+    }))
+);
 
 /* =========================================================================
  * Trip register (source for Excel export)
@@ -1324,13 +1313,6 @@ const hbarPlotW =
 const hbarPlotH =
   HBAR_CHART.height - HBAR_CHART.marginTop - HBAR_CHART.marginBottom;
 
-const revenueMix = computed(() =>
-  REVENUE_MIX_BY_PERIOD[activePeriod.value].map(r => ({
-    ...r,
-    value: Math.round(r.value * yearScale.value)
-  }))
-);
-
 // Axis max also adapts per period so a quarter's smaller totals still
 // fill the chart width instead of rendering as tiny slivers.
 const hbarMax = computed(() =>
@@ -1351,7 +1333,7 @@ const hbarGridLines = computed(() =>
 
 const hbars = computed(() => {
   const items = revenueMix.value;
-  const rowH = hbarPlotH / items.length;
+  const rowH = hbarPlotH / Math.max(items.length, 1);
 
   return items.map((r, i) => {
     const rowY = HBAR_CHART.marginTop + i * rowH;
@@ -1764,6 +1746,16 @@ const hbars = computed(() => {
   fill: #4b5563;
   font-size: 10.5px;
   font-weight: 600;
+}
+
+.hbar-loading,
+.hbar-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  font-size: 0.82rem;
+  color: #8a94a3;
 }
 
 /* ===== Responsive ===== */

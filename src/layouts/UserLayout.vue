@@ -30,35 +30,46 @@
         </div>
 
         <div class="header-actions">
-          <q-btn flat no-caps class="user-block">
-            <!-- <q-icon name="account_circle" size="34px" class="user-avatar" /> -->
-            <div class="user-text">
-              <div class="user-name">
-                {{ currentUser.name }}
-                <!-- <q-icon name="expand_more" size="16px" /> -->
-              </div>
-              <div class="user-role">{{ currentUser.role }}</div>
-            </div>
-          </q-btn>
-          <!-- 
-         
-          <q-badge rounded class="role-pill">
-            <q-icon name="verified_user" size="12px" class="q-mr-xs" />
-            <span class="role-pill-text">{{ currentUser.badge }}</span>
-          </q-badge> -->
-
-          <q-separator vertical inset class="header-sep" />
-
-          <q-btn
-            flat
-            dense
-            round
-            icon="logout"
-            class="logout-btn"
-            href="/login"
-            @click.prevent="handleLogout"
-          />
+  <!-- Logged in: show user info + logout -->
+  <template v-if="isLoggedIn">
+    <q-btn flat no-caps class="user-block">
+      <div class="user-text">
+        <div class="user-name">
+          {{ currentUser.name }}
         </div>
+        <div class="user-role">{{ currentUser.role }}</div>
+      </div>
+    </q-btn>
+
+    <q-separator vertical inset class="header-sep" />
+
+    <q-btn
+      flat
+      dense
+      round
+      icon="logout"
+      class="logout-btn"
+      href="/login"
+      @click.prevent="handleLogout"
+    >
+      <q-tooltip>ออกจากระบบ</q-tooltip>
+    </q-btn>
+  </template>
+
+  <!-- Not logged in: show login icon -->
+  <template v-else>
+    <q-btn
+      flat
+      dense
+      round
+      icon="login"
+      class="login-btn"
+      :to="'/login'"
+    >
+      <q-tooltip>เข้าสู่ระบบ</q-tooltip>
+    </q-btn>
+  </template>
+</div>
       </div>
     </q-header>
 
@@ -182,7 +193,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useQuasar } from "quasar";
 
@@ -197,7 +208,7 @@ interface NavItem {
 interface CurrentUser {
   name: string;
   role: string;
-  badge: string;
+  
 }
 
 type AlertType = "error" | "success" | "warning" | "info";
@@ -219,10 +230,21 @@ const route = useRoute();
 const $q = useQuasar();
 
 // ─── User (replace with your real auth/user source) ────────────────────────
-const currentUser: CurrentUser = {
-  name: "นพ.สมชาย ตั้งใจ (Admin Wellness)",
-  role: "หัวหน้ากลุ่มงาน Wellness & ออกหน่วย",
-  badge: "Admin Wellness"
+const userName = ref<string>("");
+const userRole = ref<string>("");
+const userDept = ref<string>("");
+
+const isLoggedIn = computed(() => !!userName.value);
+
+const currentUser = computed<CurrentUser>(() => ({
+  name: userName.value || "-",
+  role: userDept.value ? `${userRole.value} · ${userDept.value}` : userRole.value
+}));
+
+const syncAuthState = (): void => {
+  userName.value = localStorage.getItem("name") ?? "";
+  userRole.value = localStorage.getItem("role") ?? "";
+  userDept.value = localStorage.getItem("department") ?? "";
 };
 
 // ─── Nav items ──────────────────────────────────────────────────────────────
@@ -258,6 +280,11 @@ const navItems: NavItem[] = [
     to: "/cost-config"
   }
 ];
+
+
+
+
+
 
 // const activeTab = ref(
 //   navItems.find(n => route.path.startsWith(n.to))?.name ?? navItems[0].name
@@ -340,7 +367,20 @@ defineExpose({ showAlert });
 // function handleLogout(): void {
 //   emit("logout");
 // }
-async function handleLogout() {
+// ─── Logout ───────────────────────────────────────────────────────────────────
+const AUTH_KEYS: readonly string[] = [
+  'accessToken',
+  'refreshToken',
+  'userId',
+  'uName',
+  'name',
+  'department',
+  'idCard',
+  'role',
+];
+const handleLogout = (): void => {
+  AUTH_KEYS.forEach((key) => localStorage.removeItem(key));
+  syncAuthState();
   router.push("/login");
 }
 
@@ -350,6 +390,7 @@ const APP_VERSION = "1.0.0";
 const appVersionLabel = computed(
   () => `ระบบบริหารจัดการต้นทุนและรายได้ฯ v${APP_VERSION}`
 );
+watch(() => route.path, syncAuthState, { immediate: true });
 </script>
 
 <style lang="scss" scoped>
