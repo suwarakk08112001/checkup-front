@@ -110,77 +110,87 @@
             <span>การเปรียบเทียบทางการเงิน</span>
           </div>
           <div class="chart-subtitle">
-            เปรียบเทียบ รายได้ ต้นทุน และกำไรสุทธิ รายรอบออกหน่วย
+            เปรียบเทียบ รายได้ ต้นทุน และกำไรสุทธิ รายรอบออกหน่วย (ชี้เมาส์ที่แท่งเพื่อดูค่า)
           </div>
 
-          <div class="bar-scroll">
-            <svg
-              class="bar-svg"
-              :viewBox="`0 0 ${BAR_CHART.width} ${BAR_CHART.height}`"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              <!-- gridlines -->
-              <g class="grid">
-                <template v-for="g in gridLines" :key="g.value">
-                  <line
-                    :x1="BAR_CHART.marginLeft"
-                    :x2="BAR_CHART.width - BAR_CHART.marginRight"
-                    :y1="g.pos"
-                    :y2="g.pos"
+          <div v-if="!hasBarData" class="chart-empty">
+            ไม่มีข้อมูลสำหรับช่วงเวลานี้
+          </div>
+          <template v-else>
+            <div class="bar-scroll">
+              <svg
+                class="bar-svg"
+                :viewBox="`0 0 ${BAR_CHART.width} ${BAR_CHART.height}`"
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <!-- gridlines -->
+                <g class="grid">
+                  <template v-for="g in gridLines" :key="g.value">
+                    <line
+                      :x1="BAR_CHART.marginLeft"
+                      :x2="BAR_CHART.width - BAR_CHART.marginRight"
+                      :y1="g.pos"
+                      :y2="g.pos"
+                    />
+                    <text
+                      :x="BAR_CHART.marginLeft - 8"
+                      :y="g.pos + 4"
+                      text-anchor="end"
+                    >
+                      {{ g.label }}
+                    </text>
+                  </template>
+                </g>
+
+                <!-- bars -->
+                <g>
+                  <rect
+                    v-for="(b, idx) in bars"
+                    :key="idx"
+                    :x="b.x"
+                    :y="b.y"
+                    :width="b.width"
+                    :height="b.height"
+                    :fill="b.color"
+                    rx="3"
+                    class="chart-rect"
+                    :class="{ 'is-dim': hoveredBarIndex !== null && hoveredBarIndex !== idx }"
+                    @mouseenter="onBarHover($event, b, idx)"
+                    @mousemove="moveTooltip($event)"
+                    @mouseleave="onBarLeave"
                   />
+                </g>
+
+                <!-- x labels -->
+                <g class="x-labels">
                   <text
-                    :x="BAR_CHART.marginLeft - 8"
-                    :y="g.pos + 4"
-                    text-anchor="end"
+                    v-for="u in unitLabels"
+                    :key="u.id"
+                    :x="u.x"
+                    :y="BAR_CHART.height - BAR_CHART.marginBottom + 20"
+                    text-anchor="middle"
                   >
-                    {{ g.label }}
+                    {{ u.id }}
                   </text>
-                </template>
-              </g>
-
-              <!-- bars -->
-              <g>
-                <rect
-                  v-for="(b, idx) in bars"
-                  :key="idx"
-                  :x="b.x"
-                  :y="b.y"
-                  :width="b.width"
-                  :height="b.height"
-                  :fill="b.color"
-                  rx="3"
-                />
-              </g>
-
-              <!-- x labels -->
-              <g class="x-labels">
-                <text
-                  v-for="u in unitLabels"
-                  :key="u.id"
-                  :x="u.x"
-                  :y="BAR_CHART.height - BAR_CHART.marginBottom + 20"
-                  text-anchor="middle"
-                >
-                  {{ u.id }}
-                </text>
-              </g>
-            </svg>
-          </div>
-
-          <div class="chart-legend">
-            <div class="legend-item">
-              <span class="dot" :style="{ background: COLORS.profit }" />
-              กำไรสุทธิ
+                </g>
+              </svg>
             </div>
-            <div class="legend-item">
-              <span class="dot" :style="{ background: COLORS.cost }" />
-              ต้นทุน
+
+            <div class="chart-legend">
+              <div class="legend-item">
+                <span class="dot" :style="{ background: COLORS.profit }" />
+                กำไรสุทธิ
+              </div>
+              <div class="legend-item">
+                <span class="dot" :style="{ background: COLORS.cost }" />
+                ต้นทุน
+              </div>
+              <div class="legend-item">
+                <span class="dot" :style="{ background: COLORS.revenue }" />
+                รายได้
+              </div>
             </div>
-            <div class="legend-item">
-              <span class="dot" :style="{ background: COLORS.revenue }" />
-              รายได้
-            </div>
-          </div>
+          </template>
         </div>
 
         <!-- Donut chart -->
@@ -190,22 +200,48 @@
             <span>โครงสร้างต้นทุน</span>
           </div>
           <div class="chart-subtitle">
-            สัดส่วนสถิติโครงสร้างต้นทุน (Cost Breakdown)
+            สัดส่วนสถิติโครงสร้างต้นทุน (Cost Breakdown) — ชี้เมาส์หรือคลิกที่รายการเพื่อไฮไลต์
           </div>
 
-          <div class="donut-wrap">
-            <div class="donut" :style="{ background: donutGradient }">
-              <div class="donut-hole" />
-            </div>
+          <div v-if="!hasDonutData" class="chart-empty">
+            ไม่มีข้อมูลสำหรับช่วงเวลานี้
           </div>
+          <template v-else>
+            <div class="donut-wrap">
+              <svg
+                class="donut-svg"
+                viewBox="0 0 200 200"
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <path
+                  v-for="s in donutSlices"
+                  :key="s.label"
+                  :d="s.path"
+                  :fill="s.color"
+                  class="chart-path"
+                  :class="{ 'is-dim': hoveredDonutLabel !== null && hoveredDonutLabel !== s.label }"
+                  @mouseenter="onDonutHover($event, s)"
+                  @mousemove="moveTooltip($event)"
+                  @mouseleave="onDonutLeave"
+                />
+              </svg>
+            </div>
 
-          <div class="donut-legend">
-            <div v-for="c in costBreakdown" :key="c.label" class="legend-item">
-              <span class="dot" :style="{ background: c.color }" />
-              {{ c.label }}:
-              <strong>฿{{ c.amountLabel }}</strong>
+            <div class="donut-legend">
+              <div
+                v-for="c in donutSlices"
+                :key="c.label"
+                class="legend-item legend-item-clickable"
+                :class="{ 'is-dim': hoveredDonutLabel !== null && hoveredDonutLabel !== c.label }"
+                @mouseenter="hoveredDonutLabel = c.label"
+                @mouseleave="hoveredDonutLabel = null"
+              >
+                <span class="dot" :style="{ background: c.color }" />
+                {{ c.label }}:
+                <strong>฿{{ c.amountLabel }}</strong>
+              </div>
             </div>
-          </div>
+          </template>
         </div>
       </div>
 
@@ -225,63 +261,76 @@
             <span class="chart-link">จัดการการเบิกจ่าย →</span>
           </div>
           <div class="chart-subtitle">
-            สถานะการรับเงินและติดตามเบิกจ่ายจากกองทุน
+            สถานะการรับเงินและติดตามเบิกจ่ายจากกองทุน — ชี้เมาส์เพื่อดูรายละเอียด
           </div>
 
-          <div class="status-pie-wrap">
-            <svg
-              class="status-pie-svg"
-              :viewBox="`0 0 ${STATUS_PIE.viewBoxW} ${STATUS_PIE.viewBoxH}`"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              <g>
-                <path
-                  v-for="s in statusSlices"
-                  :key="s.label"
-                  :d="s.path"
-                  :fill="s.color"
-                />
-              </g>
-              <g class="status-pie-labels">
-                <template v-for="s in statusSlices" :key="`${s.label}-label`">
-                  <line
-                    :x1="s.labelLine.x1"
-                    :y1="s.labelLine.y1"
-                    :x2="s.labelLine.x2"
-                    :y2="s.labelLine.y2"
-                  />
-                  <text
-                    v-for="(line, li) in s.labelLines"
-                    :key="li"
-                    :x="s.labelPos.x"
-                    :y="s.labelPos.y + (li === 0 ? -4 : 10)"
-                    :text-anchor="s.labelPos.anchor"
-                    fill="#4b5563"
-                  >
-                    {{ line }}
-                  </text>
-                </template>
-              </g>
-            </svg>
+          <div v-if="!hasStatusData" class="chart-empty">
+            ไม่มีข้อมูลสำหรับช่วงเวลานี้
           </div>
-
-          <!-- Renders one line per status that actually exists this period,
-               driven by the same statusItems the pie chart uses, so the
-               footer can never drift out of sync with the number of
-               slices. -->
-          <div class="status-footer">
-            <div
-              v-for="s in statusItems"
-              :key="s.label"
-              class="status-footer-item"
-            >
-              <span class="dot" :style="{ background: s.color }" />
-              {{ statusFooterLabel(s.label) }}:
-              <strong :style="{ color: s.color }"
-                >฿{{ fmtNum(s.amount) }}</strong
+          <template v-else>
+            <div class="status-pie-wrap">
+              <svg
+                class="status-pie-svg"
+                :viewBox="`0 0 ${STATUS_PIE.viewBoxW} ${STATUS_PIE.viewBoxH}`"
+                preserveAspectRatio="xMidYMid meet"
               >
+                <g>
+                  <path
+                    v-for="s in statusSlices"
+                    :key="s.label"
+                    :d="s.path"
+                    :fill="s.color"
+                    class="chart-path"
+                    :class="{ 'is-dim': hoveredStatusLabel !== null && hoveredStatusLabel !== s.label }"
+                    @mouseenter="onStatusHover($event, s)"
+                    @mousemove="moveTooltip($event)"
+                    @mouseleave="onStatusLeave"
+                  />
+                </g>
+                <g class="status-pie-labels">
+                  <template v-for="s in statusSlices" :key="`${s.label}-label`">
+                    <line
+                      :x1="s.labelLine.x1"
+                      :y1="s.labelLine.y1"
+                      :x2="s.labelLine.x2"
+                      :y2="s.labelLine.y2"
+                    />
+                    <text
+                      v-for="(line, li) in s.labelLines"
+                      :key="li"
+                      :x="s.labelPos.x"
+                      :y="s.labelPos.y + (li === 0 ? -4 : 10)"
+                      :text-anchor="s.labelPos.anchor"
+                      fill="#4b5563"
+                    >
+                      {{ line }}
+                    </text>
+                  </template>
+                </g>
+              </svg>
             </div>
-          </div>
+
+            <!-- Renders one line per status that actually exists this period,
+                 driven by the same statusItems the pie chart uses, so the
+                 footer can never drift out of sync with the number of
+                 slices. -->
+            <div class="status-footer">
+              <div
+                v-for="s in statusItems"
+                :key="s.label"
+                class="status-footer-item status-footer-item-clickable"
+                :class="{ 'is-dim': hoveredStatusLabel !== null && hoveredStatusLabel !== s.label }"
+                @mouseenter="hoveredStatusLabel = s.label"
+                @mouseleave="hoveredStatusLabel = null"
+              >
+                <span class="dot" :style="{ background: s.color }" />
+                {{ statusFooterLabel(s.label) }}:
+                <strong :style="{ color: s.color }"
+                  >฿{{ fmtNum(s.amount) }}</strong
+                >
+              </div>
+            </div>
+          </template>
         </div>
 
         <!-- Horizontal bar chart: revenue mix -->
@@ -295,7 +344,7 @@
             <span>REVENUE MIX</span>
           </div>
           <div class="chart-subtitle">
-            จำนวนผู้รับบริการแยกตามสิทธิ์การรักษา
+            จำนวนผู้รับบริการแยกตามสิทธิ์การรักษา — ชี้เมาส์ที่แท่งเพื่อดูค่า
           </div>
 
           <div v-if="isLoadingBenefitTotals" class="hbar-loading">
@@ -307,60 +356,101 @@
           >
             ไม่มีข้อมูลสำหรับช่วงเวลานี้
           </div>
-          <div v-else class="hbar-scroll">
-            <svg
-              class="hbar-svg"
-              :viewBox="`0 0 ${HBAR_CHART.width} ${HBAR_CHART.height}`"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              <g class="hbar-grid">
-                <template v-for="g in hbarGridLines" :key="g.value">
-                  <line
-                    :x1="g.pos"
-                    :x2="g.pos"
-                    :y1="HBAR_CHART.marginTop"
-                    :y2="HBAR_CHART.height - HBAR_CHART.marginBottom"
+          <template v-else>
+            <div class="hbar-scroll">
+              <svg
+                class="hbar-svg"
+                :viewBox="`0 0 ${HBAR_CHART.width} ${HBAR_CHART.height}`"
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <g class="hbar-grid">
+                  <template v-for="g in hbarGridLines" :key="g.value">
+                    <line
+                      :x1="g.pos"
+                      :x2="g.pos"
+                      :y1="HBAR_CHART.marginTop"
+                      :y2="HBAR_CHART.height - HBAR_CHART.marginBottom"
+                    />
+                    <text
+                      :x="g.pos"
+                      :y="HBAR_CHART.height - HBAR_CHART.marginBottom + 18"
+                      text-anchor="middle"
+                    >
+                      {{ g.label }}
+                    </text>
+                  </template>
+                </g>
+
+                <g>
+                  <rect
+                    v-for="b in hbars"
+                    :key="b.value"
+                    :x="HBAR_CHART.marginLeft"
+                    :y="b.y"
+                    :width="b.width"
+                    :height="b.height"
+                    :fill="b.color"
+                    rx="3"
+                    class="chart-rect"
+                    :class="{
+                      'is-dim': hoveredHbarLabel !== null && hoveredHbarLabel !== b.label.join(' '),
+                      'is-empty': b.isEmpty
+                    }"
+                    @mouseenter="onHbarHover($event, b)"
+                    @mousemove="moveTooltip($event)"
+                    @mouseleave="onHbarLeave"
                   />
-                  <text
-                    :x="g.pos"
-                    :y="HBAR_CHART.height - HBAR_CHART.marginBottom + 18"
-                    text-anchor="middle"
-                  >
-                    {{ g.label }}
-                  </text>
-                </template>
-              </g>
+                </g>
 
-              <g>
-                <rect
-                  v-for="b in hbars"
-                  :key="b.value"
-                  :x="HBAR_CHART.marginLeft"
-                  :y="b.y"
-                  :width="b.width"
-                  :height="b.height"
-                  :fill="b.color"
-                  rx="3"
-                />
-              </g>
+                <g class="hbar-labels">
+                  <template v-for="b in hbars" :key="`${b.value}-label`">
+                    <text
+                      v-for="(line, li) in b.label"
+                      :key="li"
+                      :x="HBAR_CHART.marginLeft - 10"
+                      :y="b.y + b.height / 2 + (li === 0 ? -4 : 10)"
+                      text-anchor="end"
+                      fill="#4b5563"
+                    >
+                      {{ line }}
+                    </text>
+                  </template>
+                </g>
+              </svg>
+            </div>
 
-              <g class="hbar-labels">
-                <template v-for="b in hbars" :key="`${b.value}-label`">
-                  <text
-                    v-for="(line, li) in b.label"
-                    :key="li"
-                    :x="HBAR_CHART.marginLeft - 10"
-                    :y="b.y + b.height / 2 + (li === 0 ? -4 : 10)"
-                    text-anchor="end"
-                    fill="#4b5563"
-                  >
-                    {{ line }}
-                  </text>
-                </template>
-              </g>
-            </svg>
-          </div>
+            <!-- Legend footer, same treatment as the FINANCIAL TRACKING
+                 status-footer: one clickable row per benefit, driven by
+                 the same revenueMix data the bars use so it can never
+                 drift out of sync with the chart. -->
+            <div class="status-footer">
+              <div
+                v-for="r in revenueMix"
+                :key="r.label.join(' ')"
+                class="status-footer-item status-footer-item-clickable"
+                :class="{ 'is-dim': hoveredHbarLabel !== null && hoveredHbarLabel !== r.label.join(' ') }"
+                @mouseenter="hoveredHbarLabel = r.label.join(' ')"
+                @mouseleave="hoveredHbarLabel = null"
+              >
+                <span class="dot" :style="{ background: r.color }" />
+                {{ r.label.join(' ') }}:
+                <strong :style="{ color: r.color }">฿{{ fmtNum(r.value) }}</strong>
+              </div>
+            </div>
+          </template>
         </div>
+      </div>
+    </div>
+
+    <!-- ===== Shared hover tooltip (used by every chart) ===== -->
+    <div
+      v-if="tooltip.visible"
+      class="chart-tooltip"
+      :style="{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }"
+    >
+      <div class="chart-tooltip-title">{{ tooltip.title }}</div>
+      <div v-for="(line, i) in tooltip.lines" :key="i" class="chart-tooltip-line">
+        {{ line }}
       </div>
     </div>
   </q-page>
@@ -387,6 +477,50 @@ const COLORS = {
   purple: "#7e3ff2",
   info: "#29b6f6"
 } as const;
+
+/* =========================================================================
+ * Shared hover tooltip
+ *
+ * A single tooltip instance is reused by every chart (bar, donut, status
+ * pie, hbar) — each chart just calls showTooltip()/moveTooltip()/
+ * hideTooltip() on hover, keeping the positioning logic in one place.
+ * ========================================================================= */
+
+interface TooltipState {
+  visible: boolean;
+  x: number;
+  y: number;
+  title: string;
+  lines: string[];
+}
+
+const tooltip = ref<TooltipState>({
+  visible: false,
+  x: 0,
+  y: 0,
+  title: "",
+  lines: []
+});
+
+function showTooltip(event: MouseEvent, title: string, lines: string[]): void {
+  tooltip.value = {
+    visible: true,
+    x: event.clientX,
+    y: event.clientY,
+    title,
+    lines
+  };
+}
+
+function moveTooltip(event: MouseEvent): void {
+  if (!tooltip.value.visible) return;
+  tooltip.value.x = event.clientX;
+  tooltip.value.y = event.clientY;
+}
+
+function hideTooltip(): void {
+  tooltip.value.visible = false;
+}
 
 /* =========================================================================
  * Toolbar: period filter
@@ -713,12 +847,18 @@ async function fetchBenefitTotals(): Promise<void> {
   isLoadingBenefitTotals.value = true;
   try {
     const res = await api.get<BenefitTotal[]>("/dashboard/totalbenefit", {
-      params: {
-        financialYear: fiscalYear.value,
-        quater: toQuaterParam(activePeriod.value)
-      }
-    });
-    benefitTotals.value = res.data;
+  params: {
+    financialYear: fiscalYear.value,
+    quater: toQuaterParam(activePeriod.value)
+  }
+});
+// กันกรณี response ถูกห่อไว้อีกชั้น หรือไม่ใช่ array
+const data = res.data as unknown;
+benefitTotals.value = Array.isArray(data)
+  ? data
+  : Array.isArray((data as any)?.data)
+    ? (data as any).data
+    : [];
   } catch (err) {
     const error = err as AxiosError;
     console.error("Failed to fetch benefit totals:", error);
@@ -749,14 +889,16 @@ const BENEFIT_COLOR_CYCLE: readonly string[] = [
   COLORS.profit
 ];
 
+// No longer filters out b.total === 0 — a category with no data this
+// period should still render as a (minimum-width) bar rather than
+// disappearing from the chart entirely. See hbars below for the
+// minimum-width handling.
 const revenueMix = computed<RevenueSource[]>(() =>
-  benefitTotals.value
-    .filter(b => b.total > 0)
-    .map((b, i) => ({
-      label: [b.benefitname ?? "ไม่ระบุสิทธิ์"],
-      value: b.total,
-      color: BENEFIT_COLOR_CYCLE[i % BENEFIT_COLOR_CYCLE.length]
-    }))
+  benefitTotals.value.map((b, i) => ({
+    label: [b.benefitname ?? "ไม่ระบุสิทธิ์"],
+    value: b.total,
+    color: BENEFIT_COLOR_CYCLE[i % BENEFIT_COLOR_CYCLE.length]
+  }))
 );
 
 /* =========================================================================
@@ -1006,6 +1148,11 @@ function buildAxisTicks(max: number, step: number): AxisTick[] {
   return ticks;
 }
 
+function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
+  const rad = ((angleDeg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
 /* ---------------- Trips for the selected period ---------------- */
 const units = computed(() =>
   UNITS_BY_PERIOD[activePeriod.value].map(u => ({
@@ -1013,6 +1160,13 @@ const units = computed(() =>
     revenue: u.revenue * yearScale.value,
     cost: u.cost * yearScale.value
   }))
+);
+
+// True when there's at least one trip with non-zero revenue or cost for
+// the selected period — drives the empty-state for the financial
+// comparison bar chart.
+const hasBarData = computed(() =>
+  units.value.some(u => u.revenue > 0 || u.cost > 0)
 );
 
 /* =========================================================================
@@ -1107,6 +1261,8 @@ const BAR_CHART = {
   axisStep: 20000
 } as const;
 
+const BAR_SERIES_LABELS = ["รายได้", "ต้นทุน", "กำไรสุทธิ"] as const;
+
 const barPlotW = BAR_CHART.width - BAR_CHART.marginLeft - BAR_CHART.marginRight;
 const barPlotH =
   BAR_CHART.height - BAR_CHART.marginTop - BAR_CHART.marginBottom;
@@ -1139,6 +1295,9 @@ const bars = computed(() => {
     width: number;
     height: number;
     color: string;
+    unitId: string;
+    seriesLabel: string;
+    rawValue: number;
   }[] = [];
 
   units.value.forEach((u, i) => {
@@ -1146,9 +1305,9 @@ const bars = computed(() => {
       BAR_CHART.marginLeft + i * groupW + (groupW - groupBarsW) / 2;
     const profit = u.revenue - u.cost;
     const series = [
-      { value: u.revenue, color: COLORS.revenue },
-      { value: u.cost, color: COLORS.cost },
-      { value: profit, color: COLORS.profit }
+      { value: u.revenue, color: COLORS.revenue, label: BAR_SERIES_LABELS[0] },
+      { value: u.cost, color: COLORS.cost, label: BAR_SERIES_LABELS[1] },
+      { value: profit, color: COLORS.profit, label: BAR_SERIES_LABELS[2] }
     ];
     series.forEach((s, si) => {
       const height = (s.value / yMax.value) * barPlotH;
@@ -1157,7 +1316,10 @@ const bars = computed(() => {
         y: BAR_CHART.marginTop + barPlotH - height,
         width: BAR_CHART.barWidth,
         height,
-        color: s.color
+        color: s.color,
+        unitId: u.id,
+        seriesLabel: s.label,
+        rawValue: s.value
       });
     });
   });
@@ -1173,9 +1335,65 @@ const unitLabels = computed(() => {
   }));
 });
 
+const hoveredBarIndex = ref<number | null>(null);
+
+function onBarHover(
+  event: MouseEvent,
+  bar: { unitId: string; seriesLabel: string; rawValue: number },
+  idx: number
+): void {
+  hoveredBarIndex.value = idx;
+  showTooltip(event, bar.unitId, [`${bar.seriesLabel}: ${fmtBaht(bar.rawValue)}`]);
+}
+
+function onBarLeave(): void {
+  hoveredBarIndex.value = null;
+  hideTooltip();
+}
+
 /* =========================================================================
  * Donut chart: cost breakdown
  * ========================================================================= */
+
+const DONUT = {
+  cx: 100,
+  cy: 100,
+  outerRadius: 88,
+  innerRadius: 58
+} as const;
+
+function donutArcPath(startAngle: number, endAngle: number): string {
+  const { cx, cy, outerRadius, innerRadius } = DONUT;
+
+  // A slice that owns the full 360° collapses the normal path to zero
+  // area, same issue as the status pie below — draw it as two half
+  // annuli instead so SVG can actually render it.
+  if (endAngle - startAngle >= 359.99) {
+    const outerTop = polarToCartesian(cx, cy, outerRadius, 0);
+    const outerBottom = polarToCartesian(cx, cy, outerRadius, 180);
+    const innerBottom = polarToCartesian(cx, cy, innerRadius, 180);
+    const innerTop = polarToCartesian(cx, cy, innerRadius, 0);
+    return `M ${outerTop.x} ${outerTop.y}
+      A ${outerRadius} ${outerRadius} 0 1 1 ${outerBottom.x} ${outerBottom.y}
+      A ${outerRadius} ${outerRadius} 0 1 1 ${outerTop.x} ${outerTop.y}
+      L ${innerTop.x} ${innerTop.y}
+      A ${innerRadius} ${innerRadius} 0 1 0 ${innerBottom.x} ${innerBottom.y}
+      A ${innerRadius} ${innerRadius} 0 1 0 ${innerTop.x} ${innerTop.y}
+      Z`;
+  }
+
+  const startOuter = polarToCartesian(cx, cy, outerRadius, startAngle);
+  const endOuter = polarToCartesian(cx, cy, outerRadius, endAngle);
+  const startInner = polarToCartesian(cx, cy, innerRadius, endAngle);
+  const endInner = polarToCartesian(cx, cy, innerRadius, startAngle);
+  const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+
+  return `M ${startOuter.x} ${startOuter.y}
+    A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${endOuter.x} ${endOuter.y}
+    L ${startInner.x} ${startInner.y}
+    A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${endInner.x} ${endInner.y}
+    Z`;
+}
 
 const costBreakdown = computed(() =>
   COST_BREAKDOWN_BY_PERIOD[activePeriod.value].map(c => {
@@ -1191,18 +1409,49 @@ const costBreakdown = computed(() =>
   })
 );
 
-const donutGradient = computed(() => {
+// Guards the donut against an all-zero cost breakdown, which would
+// otherwise divide-by-zero in donutSlices below (0/0 = NaN angles) and
+// render broken/invisible paths instead of a clean empty state.
+const hasDonutData = computed(() =>
+  costBreakdown.value.some(c => c.value > 0)
+);
+
+const donutSlices = computed(() => {
   const items = costBreakdown.value;
   const total = items.reduce((sum, c) => sum + c.value, 0);
+  if (!total) return [];
   let cursor = 0;
-  const stops = items.map(c => {
-    const start = (cursor / total) * 360;
+
+  return items.map(c => {
+    const startAngle = (cursor / total) * 360;
     cursor += c.value;
-    const end = (cursor / total) * 360;
-    return `${c.color} ${start}deg ${end}deg`;
+    const endAngle = (cursor / total) * 360;
+    const percent = total ? (c.value / total) * 100 : 0;
+
+    return {
+      ...c,
+      path: donutArcPath(startAngle, endAngle),
+      percent
+    };
   });
-  return `conic-gradient(${stops.join(", ")})`;
 });
+
+const hoveredDonutLabel = ref<string | null>(null);
+
+function onDonutHover(
+  event: MouseEvent,
+  slice: { label: string; amountLabel: string; percent: number }
+): void {
+  hoveredDonutLabel.value = slice.label;
+  showTooltip(event, slice.label, [
+    `฿${slice.amountLabel} (${slice.percent.toFixed(1)}%)`
+  ]);
+}
+
+function onDonutLeave(): void {
+  hoveredDonutLabel.value = null;
+  hideTooltip();
+}
 
 /* =========================================================================
  * Pie chart: fund tracking status
@@ -1215,6 +1464,12 @@ const statusItems = computed(() =>
   }))
 );
 
+// Guards the status pie against an empty items list or an all-zero
+// count, which would otherwise divide-by-zero in statusSlices below.
+const hasStatusData = computed(() =>
+  statusItems.value.length > 0 && statusItems.value.some(s => s.count > 0)
+);
+
 // Wide viewBox + moderate radius leaves enough horizontal room on both
 // sides for the longest label ("ล่าช้า >3 เดือน (Warning): 2 รอบ") so it
 // never runs off the SVG canvas.
@@ -1225,11 +1480,6 @@ const STATUS_PIE = {
   cy: 125,
   radius: 66
 } as const;
-
-function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
-  const rad = ((angleDeg - 90) * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-}
 
 // Splits a label like "ล่าช้า >3 เดือน (Warning)" into two shorter lines
 // at the opening parenthesis, so each line is narrow enough to fit
@@ -1244,6 +1494,7 @@ const statusSlices = computed(() => {
   const { cx, cy, radius } = STATUS_PIE;
   const items = statusItems.value;
   const total = items.reduce((sum, s) => sum + s.count, 0);
+  if (!total) return [];
   let cursor = 0;
 
   return items.map(s => {
@@ -1293,6 +1544,24 @@ const statusSlices = computed(() => {
   });
 });
 
+const hoveredStatusLabel = ref<string | null>(null);
+
+function onStatusHover(
+  event: MouseEvent,
+  slice: { label: string; count: number; amount: number }
+): void {
+  hoveredStatusLabel.value = slice.label;
+  showTooltip(event, slice.label, [
+    `${slice.count} รอบ`,
+    `฿${fmtNum(slice.amount)}`
+  ]);
+}
+
+function onStatusLeave(): void {
+  hoveredStatusLabel.value = null;
+  hideTooltip();
+}
+
 /* =========================================================================
  * Horizontal bar chart: revenue mix
  * ========================================================================= */
@@ -1331,6 +1600,10 @@ const hbarGridLines = computed(() =>
   }))
 );
 
+// Minimum pixel width for a bar so a zero (or vanishingly small) value
+// still renders as a visible stub instead of an invisible sliver.
+const HBAR_MIN_WIDTH = 4;
+
 const hbars = computed(() => {
   const items = revenueMix.value;
   const rowH = hbarPlotH / Math.max(items.length, 1);
@@ -1338,17 +1611,39 @@ const hbars = computed(() => {
   return items.map((r, i) => {
     const rowY = HBAR_CHART.marginTop + i * rowH;
     const barY = rowY + (rowH - HBAR_CHART.barThickness) / 2;
-    const width = (r.value / hbarMax.value) * hbarPlotW;
+    const rawWidth = (r.value / hbarMax.value) * hbarPlotW;
+    const width = Math.max(rawWidth, HBAR_MIN_WIDTH);
     return {
       label: r.label,
       value: r.value,
       color: r.color,
       y: barY,
       height: HBAR_CHART.barThickness,
-      width
+      width,
+      isEmpty: r.value <= 0
     };
   });
 });
+
+const hoveredHbarLabel = ref<string | null>(null);
+
+function onHbarHover(
+  event: MouseEvent,
+  bar: { label: readonly string[]; value: number; isEmpty: boolean }
+): void {
+  const key = bar.label.join(" ");
+  hoveredHbarLabel.value = key;
+  showTooltip(
+    event,
+    key,
+    [bar.value > 0 ? `฿${fmtNum(bar.value)}` : "ไม่มีข้อมูล"]
+  );
+}
+
+function onHbarLeave(): void {
+  hoveredHbarLabel.value = null;
+  hideTooltip();
+}
 </script>
 
 <style scoped>
@@ -1663,18 +1958,10 @@ const hbars = computed(() => {
   padding: 12px 0 18px;
 }
 
-.donut {
+.donut-svg {
   width: 176px;
   height: 176px;
-  border-radius: 50%;
-  position: relative;
-}
-
-.donut-hole {
-  position: absolute;
-  inset: 30px;
-  background: #ffffff;
-  border-radius: 50%;
+  overflow: visible;
 }
 
 /* ===== Fund tracking pie chart ===== */
@@ -1749,13 +2036,78 @@ const hbars = computed(() => {
 }
 
 .hbar-loading,
-.hbar-empty {
+.hbar-empty,
+.chart-empty {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 180px;
   font-size: 0.82rem;
   color: #8a94a3;
+}
+
+/* ===== Interactivity: hover states + shared tooltip ===== */
+.chart-rect,
+.chart-path {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.chart-rect.is-dim,
+.chart-path.is-dim {
+  opacity: 0.35;
+}
+
+/* Zero-value stub bar: still visible as "a bar" but clearly muted so it
+   reads as no-data rather than a real (tiny) value. */
+.chart-rect.is-empty {
+  opacity: 0.3;
+}
+
+.chart-rect.is-empty.is-dim {
+  opacity: 0.15;
+}
+
+.legend-item-clickable,
+.status-footer-item-clickable {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.legend-item-clickable.is-dim,
+.status-footer-item-clickable.is-dim {
+  opacity: 0.4;
+}
+
+.legend-item-clickable:hover,
+.status-footer-item-clickable:hover {
+  background: #f5f7fa;
+}
+
+.chart-tooltip {
+  position: fixed;
+  z-index: 9999;
+  background: #1a1f27;
+  color: #ffffff;
+  font-size: 0.74rem;
+  border-radius: 8px;
+  padding: 8px 10px;
+  pointer-events: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  max-width: 220px;
+}
+
+.chart-tooltip-title {
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.chart-tooltip-line {
+  color: #d7dbe2;
+  line-height: 1.4;
 }
 
 /* ===== Responsive ===== */
@@ -1786,13 +2138,9 @@ const hbars = computed(() => {
     padding: 14px;
   }
 
-  .donut {
+  .donut-svg {
     width: 148px;
     height: 148px;
-  }
-
-  .donut-hole {
-    inset: 24px;
   }
 }
 
