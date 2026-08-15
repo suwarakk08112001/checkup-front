@@ -264,7 +264,7 @@
             :columns="tableColumns"
             row-key="id"
             v-model:pagination="pagination"
-            :loading="tableLoading"
+            :loading="tableLoading || isLoadingClaims"
             binary-state-sort
             @request="onTableRequest"
             :grid="isMobile"
@@ -277,10 +277,11 @@
               </q-td>
             </template>
 
-            <!-- รหัส: round code, styled to match the earlier combined cell. -->
-            <template #body-cell-id="props">
+            <!-- รหัส: human-readable claim code, styled to match the earlier
+                 combined cell. -->
+            <template #body-cell-code="props">
               <q-td :props="props">
-                <span class="cell-code">{{ props.row.id }}</span>
+                <span class="cell-code">{{ props.row.code }}</span>
               </q-td>
             </template>
 
@@ -389,7 +390,7 @@
                 </div>
                 <div class="mobile-row">
                   <span class="mobile-label">รหัส</span>
-                  <span class="cell-code">{{ props.row.id }}</span>
+                  <span class="cell-code">{{ props.row.code }}</span>
                 </div>
                 <div class="mobile-row mobile-row--stack">
                   <span class="mobile-label">งานออกหน่วย</span>
@@ -544,9 +545,17 @@
 
           <div class="status-field">
             <label class="status-label">สถานะเบิกจ่าย</label>
+            <!-- Options now come from GET /status/all (see fetchStatus()).
+                 option-value points at `name` because statusDialog.status
+                 is typed as ClaimStatus (the display string), matching what
+                 the rest of the component (statusMeta, PATCH payload) uses. -->
             <q-select
               v-model="statusDialog.status"
-              :options="STATUS_OPTIONS"
+              :options="statusSelectOptions"
+              option-label="name"
+              option-value="name"
+              emit-value
+              map-options
               dense
               outlined
               class="status-input"
@@ -629,27 +638,23 @@
           </div>
 
           <div class="status-field">
-            <label class="status-label">กองทุน</label>
-            <q-input
-              v-model="addDialog.fundSource"
-              dense
-              outlined
-              placeholder="เช่น UC (สปสช.) / ประกันสังคม"
-              class="status-input"
-            />
-          </div>
-
-          <div class="status-field">
-            <label class="status-label">ไตรมาส</label>
+            <label class="status-label">สิทธิ์การรักษา</label>
+            <!-- Options come from GET /benefit/all (see fetchBenefit()).
+                 addDialog.benefitId holds the numeric benefit id (not the
+                 display name) — option-value points at `id`, emit-value +
+                 map-options so the model holds that id directly, which is
+                 what submitAddDialog() sends to the backend as
+                 `benefitid`. -->
             <q-select
-              v-model="addDialog.period"
-              :options="quarterOptions"
-              option-label="label"
-              option-value="value"
+              v-model="addDialog.benefitId"
+              :options="benefitSelectOptions"
+              option-label="name"
+              option-value="id"
               emit-value
               map-options
               dense
               outlined
+              placeholder="เช่น UC (สปสช.) / ประกันสังคม"
               class="status-input"
             />
           </div>
@@ -719,7 +724,11 @@
             <label class="status-label">สถานะเบิกจ่าย</label>
             <q-select
               v-model="addDialog.status"
-              :options="STATUS_OPTIONS"
+              :options="statusSelectOptions"
+              option-label="name"
+              option-value="name"
+              emit-value
+              map-options
               dense
               outlined
               class="status-input"
@@ -810,14 +819,7 @@ import {
 } from "vue";
 import { Notify } from "quasar";
 import * as XLSX from "xlsx";
-
-/* =========================================================================
- * Shared design tokens
- *
- * Single source of truth for the colors used across the KPI cards, donut,
- * bucket bars, and status badges, so a palette change only happens here.
- * Kept consistent with the overview dashboard's palette.
- * ========================================================================= */
+import { api } from "@/boot/axios";
 
 const COLORS = {
   revenue: "#1e6fd9",
@@ -825,14 +827,6 @@ const COLORS = {
   warning: "#f5a524",
   danger: "#e5484d"
 } as const;
-
-/* =========================================================================
- * Responsive helper
- *
- * q-table's default row layout gets cramped under ~600px even with a
- * scroll wrapper, so below that width we switch it into Quasar's built-in
- * "grid" mode (renders each row as a stacked card instead of a table row).
- * ========================================================================= */
 
 const MOBILE_BREAKPOINT = 599;
 const viewportWidth = ref(
@@ -848,65 +842,19 @@ onUnmounted(() => window.removeEventListener("resize", handleResize));
 
 const isMobile = computed(() => viewportWidth.value <= MOBILE_BREAKPOINT);
 
-/* =========================================================================
- * Toolbar: fiscal year / period / status filters
- * ========================================================================= */
-
 interface Option {
   value: string;
   label: string;
 }
 
-// Only fiscal year 2026 has real claim records right now (see
-// CLAIM_RECORDS below) — 2024/2025 are included so the selector is usable
-// immediately, matching the overview dashboard's REAL_DATA_YEAR pattern.
-// Replace this once historical claim data is wired in.
-const REAL_DATA_YEAR = "2026";
 const fiscalYears: readonly Option[] = [
   { value: "2024", label: "พ.ศ. 2567" },
   { value: "2025", label: "พ.ศ. 2568" },
   { value: "2026", label: "พ.ศ. 2569" }
 ];
-const fiscalYear = ref<string>(REAL_DATA_YEAR);
+const fiscalYear = ref<string>("2026");
 
-const periods: readonly Option[] = [
-  { value: "all", label: "ทุกไตรมาส" },
-  { value: "q1", label: "ไตรมาส 1" },
-  { value: "q2", label: "ไตรมาส 2" },
-  { value: "q3", label: "ไตรมาส 3" },
-  { value: "q4", label: "ไตรมาส 4" }
-];
-const activePeriod = ref<string>("all");
-
-// Same list as `periods`, minus "ทุกไตรมาส" — the เพิ่มตารางติดตาม dialog
-// needs the new record to belong to one concrete quarter, never "all".
-const quarterOptions: readonly Option[] = periods.filter(
-  p => p.value !== "all"
-);
-
-const statusFilterOptions: readonly Option[] = [
-  { value: "all", label: "ทุกสถานะ" },
-  { value: "normal", label: "รอเบิกจ่ายปกติ" },
-  { value: "warning3", label: "ล่าช้า >3 เดือน" },
-  { value: "warning6", label: "ล่าช้า >6 เดือน" },
-  { value: "paid", label: "รับเงินครบถ้วน" }
-];
 const statusFilter = ref<string>("all");
-
-/* =========================================================================
- * Claim register
- *
- * One row per disbursement round. `claimAmount` is the amount formally
- * submitted to the fund; rounds still in planning (not yet submitted) are
- * flagged `submitted: false` and excluded from the "total sent" KPI, but
- * their forecast amount is still counted toward "pending" since it's money
- * the department expects to have to chase once it is submitted.
- *
- * `title` is the full deployment description (e.g. "ออกหน่วยตรวจสุขภาพ...")
- * shown as the bold first line of the ID cell; `deployDate` is the date the
- * outreach round itself took place, distinct from `claimDate` (the date the
- * claim was submitted to the fund for reimbursement).
- * ========================================================================= */
 
 type ClaimStatus =
   | "รับเงินครบถ้วน"
@@ -914,8 +862,17 @@ type ClaimStatus =
   | "ล่าช้า >3 เดือน"
   | "ล่าช้า >6 เดือน";
 
+// FIX: единая (camelCase) конвенция именования полей на всём фронтенде.
+// The record's unique key is `id` (matches the "รหัส" / round-id column and
+// every `.id` reference used across the table, dialogs, and row actions
+// below). All fields below use camelCase consistently so they match what
+// the <template> block above actually reads (props.row.orgName,
+// props.row.claimAmount, props.row.submitted, etc.) — the previous version
+// declared these in lowercase (claimamount, receiveamount, deploydate...)
+// which silently rendered as `undefined` everywhere in the UI.
 interface ClaimRecord {
-  id: string;
+  id: number;
+  code: string;
   title: string;
   orgName: string;
   fundSource: string;
@@ -923,161 +880,302 @@ interface ClaimRecord {
   claimDate: string;
   claimAmount: number;
   receivedAmount: number;
+  overdueAmount: number;
   receivedDate: string;
-  note: string;
-  overdueDays: number;
   status: ClaimStatus;
   submitted: boolean;
-  period: "q1" | "q2" | "q3" | "q4";
+  overdueDays: number;
+  note: string;
 }
 
-// A ref (not a plain const) — the "บันทึกสถานะ" dialog needs to actually
-// mutate a row's claim/received amounts and dates when saved, and have
-// that change flow through periodClaims → filteredClaims → the table,
-// KPIs, and alert panels automatically. The เพิ่มตารางติดตาม dialog appends
-// a brand-new row the same way.
-const CLAIM_RECORDS = ref<ClaimRecord[]>([
-  {
-    id: "PLH-69-001",
-    title: "ออกหน่วยตรวจสุขภาพประจำปี ครูและบุคลากร โรงเรียนปะเหลียนวิทยา",
-    orgName: "โรงเรียนปะเหลียนวิทยา",
-    fundSource: "UC (สปสช.)",
-    deployDate: "2026-01-15",
-    claimDate: "2026-01-20",
-    claimAmount: 122640,
-    receivedAmount: 122640,
-    receivedDate: "2026-02-18",
-    note: "ได้รับเงินโอนครบถ้วนจากกรมบัญชีกลางและประกันสังคมแล้ว",
-    overdueDays: 0,
-    status: "รับเงินครบถ้วน",
-    submitted: true,
-    period: "q1"
-  },
-  {
-    id: "PLH-69-002",
-    title: "ออกหน่วยตรวจสุขภาพประชาชนกลุ่มเสี่ยง NCD อบต.ท่าข้าม",
-    orgName: "องค์การบริหารส่วนตำบลท่าข้าม",
-    fundSource: "อปท.",
-    deployDate: "2026-02-10",
-    claimDate: "2026-02-15",
-    claimAmount: 75420,
-    receivedAmount: 0,
-    receivedDate: "",
-    note: "",
-    overdueDays: 161,
-    status: "ล่าช้า >3 เดือน",
-    submitted: true,
-    period: "q2"
-  },
-  {
-    id: "PLH-69-003",
-    title: "ออกหน่วยตรวจสุขภาพพนักงาน บริษัท แปรรูปยางตรัง จำกัด",
-    orgName: "บริษัท แปรรูปยางตรัง จำกัด",
-    fundSource: "ประกันสังคม",
-    deployDate: "2026-04-05",
-    claimDate: "2026-04-10",
-    claimAmount: 75850,
-    receivedAmount: 0,
-    receivedDate: "",
-    note: "",
-    overdueDays: 107,
-    status: "ล่าช้า >3 เดือน",
-    submitted: true,
-    period: "q2"
-  },
-  {
-    id: "PLH-69-004",
-    title: "ออกหน่วยตรวจสุขภาพข้าราชการและพนักงาน อบต.ปะเหลียน",
-    orgName: "องค์การบริหารส่วนตำบลปะเหลียน",
-    fundSource: "CSMBS (กรมบัญชีกลาง)",
-    deployDate: "2026-06-18",
-    claimDate: "2026-06-25",
-    claimAmount: 96800,
-    receivedAmount: 0,
-    receivedDate: "",
-    note: "",
-    overdueDays: 31,
-    status: "รอเบิกจ่ายปกติ",
-    submitted: true,
-    period: "q3"
-  },
-  {
-    id: "PLH-69-005",
-    title:
-      "วางแผนออกหน่วยตรวจสุขภาพเคลื่อนที่ กลุ่มผู้สูงอายุและ อสม. ต.แหลมสอม",
-    orgName: "รพ.สต.บ้านแหลมสอม / อบต.แหลมสอม",
-    fundSource: "UC (สปสช.)",
-    deployDate: "2026-08-15",
-    claimDate: "",
-    claimAmount: 76000,
-    receivedAmount: 0,
-    receivedDate: "",
-    note: "",
-    overdueDays: 0,
-    status: "รอเบิกจ่ายปกติ",
-    submitted: false,
-    period: "q4"
+function formatDate(value: unknown): string {
+  if (!value || typeof value !== "string") return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const year = d.getUTCFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+// Maps one row coming back from GET /expenses into a ClaimRecord. Written
+// defensively since the exact API response shape isn't pinned down here —
+// adjust the `raw.xxx` keys to match your backend's actual field names.
+// NOTE: `raw.status` is optional-chained throughout (it previously crashed
+// with "Cannot read properties of undefined" whenever a row came back
+// without a populated status relation).
+function mapApiRecordToClaim(raw: Record<string, any>): ClaimRecord {
+  const claimDate = formatDate(raw.claimdate);
+  const submitted = Boolean(claimDate);
+
+  const receivedAmount = Number(raw.receiveamount ?? 0);
+  const claimAmount = Number(raw.claimamount ?? 0);
+
+  let overdueDays = 0;
+  if (submitted && receivedAmount < claimAmount && raw.claimdate) {
+    // ใช้ raw.claimdate (ISO ต้นฉบับ) ในการคำนวณ ไม่ใช่ค่าที่ format แล้ว
+    const diffMs = Date.now() - new Date(raw.claimdate).getTime();
+    overdueDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
   }
-]);
 
-const STATUS_FILTER_MATCH: Readonly<Record<string, ClaimStatus | null>> = {
-  all: null,
-  normal: "รอเบิกจ่ายปกติ",
-  warning3: "ล่าช้า >3 เดือน",
-  warning6: "ล่าช้า >6 เดือน",
-  paid: "รับเงินครบถ้วน"
-};
-
-/* ---------------- Claims for the selected period ---------------- */
-
-// Only fiscal year 2026 has real claim-level records (see REAL_DATA_YEAR
-// above), so selecting a different year collapses this list to empty
-// rather than fabricating rows — the KPIs, charts, and table below all
-// read through this list, so they all fall back to zero together instead
-// of drifting out of sync with each other.
-const periodClaims = computed<ClaimRecord[]>(() => {
-  if (fiscalYear.value !== REAL_DATA_YEAR) return [];
-  return CLAIM_RECORDS.value.filter(
-    c => activePeriod.value === "all" || c.period === activePeriod.value
+  const statusName = (raw.status?.name ?? "รอเบิกจ่ายปกติ") as ClaimStatus;
+  const overdueAmount = Number(
+    raw.overdueamount ?? Math.max(0, claimAmount - receivedAmount)
   );
-});
 
-// Table rows apply the status filter on top of the period filter above.
-// KPIs/donut/buckets intentionally use `periodClaims` (period only) so the
-// summary cards always describe the whole period, while the table narrows
-// further to whatever status the user is looking for.
-const filteredClaims = computed<ClaimRecord[]>(() => {
-  const wantedStatus = STATUS_FILTER_MATCH[statusFilter.value];
-  return periodClaims.value.filter(
-    c => wantedStatus === null || c.status === wantedStatus
-  );
-});
+  return {
+    id: Number(raw.id),
+    code: raw.code ?? "",
+    title: raw.title ?? "",
+    orgName: raw.orgname ?? "",
+    fundSource: raw.fundsource ?? "",
+    deployDate: formatDate(raw.deploydate),
+    claimDate,
+    claimAmount,
+    receivedAmount,
+    overdueAmount,
+    receivedDate: formatDate(raw.receivedate),
+    status: statusName,
+    submitted,
+    overdueDays,
+    note: raw.note ?? ""
+  };
+}
 
-// Dedicated search fields layered on top of filteredClaims (which already
-// carries the status filter). The generic `search` box stays as a quick
-// รหัส (code) lookup; งานออกหน่วย, สถานที่, and วันที่ออกหน่วย each get
-// their own field so they can be searched independently rather than all
-// sharing one fuzzy box. All active filters combine with AND — this is
-// what the table's "server request" emulation below actually reads from.
-// KPIs/alerts intentionally stay on filteredClaims so they keep
-// summarizing the whole filtered period regardless of what's typed here.
+// Single source of truth for the claims currently loaded from the API.
+const CLAIM_RECORDS = ref<ClaimRecord[]>([]);
+const isLoadingClaims = ref(false);
+
 const search = ref("");
 const titleQuery = ref("");
 const orgQuery = ref("");
 const deployDateQuery = ref("");
 
-const searchedClaims = computed<ClaimRecord[]>(() => {
-  const idQ = search.value.trim().toLowerCase();
+// Fetches claims for the selected fiscal year + filters from the API and
+// replaces CLAIM_RECORDS with the result. Sorting/paging over that data
+// still happens client-side in onTableRequest below.
+async function fetchExpense(): Promise<void> {
+  isLoadingClaims.value = true;
+  try {
+    const params = {
+      page: pagination.value.page,
+      limit: pagination.value.rowsPerPage,
+      title: titleQuery.value.trim() || undefined,
+      orgname: orgQuery.value.trim() || undefined,
+      deploydate: deployDateQuery.value.trim() || undefined,
+      statusId: statusId.value ?? undefined,
+    };
+
+    // DEBUG: confirm what's actually being sent, and what comes back, so
+    // we can tell whether the backend is filtering on these params at all
+    // (or using different param names). Remove once /expenses filtering
+    // is confirmed working.
+    console.log("[fetchExpense] request params:", params);
+
+    const response = await api.get("/expenses", { params });
+
+    console.log("[fetchExpense] raw response.data:", response.data);
+
+    // FIX: fully-optional chain — `expenses` may itself be missing, not
+    // just `expenses.data`. The old `response.data?.expenses.data` threw
+    // whenever `expenses` was undefined.
+    const rows: unknown[] = Array.isArray(response.data)
+      ? response.data
+      : (response.data?.data ?? response.data?.expenses?.data ?? []);
+
+    console.log("[fetchExpense] rows extracted (count):", rows.length, rows);
+
+    CLAIM_RECORDS.value = rows.map(row =>
+      mapApiRecordToClaim(row as Record<string, any>)
+    );
+  } catch (error) {
+    console.error("Failed to fetch expense claims:", error);
+    CLAIM_RECORDS.value = [];
+    Notify.create({
+      type: "negative",
+      message: "โหลดข้อมูลการเบิกจ่ายจากระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      position: "top"
+    });
+  } finally {
+    isLoadingClaims.value = false;
+    pagination.value.page = 1;
+    tableRef.value?.requestServerInteraction();
+  }
+}
+
+interface StatusOption {
+  id: number;
+  name: ClaimStatus;
+}
+
+// Status list loaded from GET /status/all, used to populate the
+// "สถานะเบิกจ่าย" dropdowns in both the "บันทึกสถานะ" and "เพิ่มตารางติดตาม"
+// dialogs. Kept separate from CLAIM_RECORDS — this endpoint returns status
+// definitions, not claim rows, so it must not be run through
+// mapApiRecordToClaim() (that was the bug: the previous version tried to
+// map status rows as if they were claims, and also referenced an
+// undeclared `rows` variable, which threw a ReferenceError on every call).
+const statusOptions = ref<StatusOption[]>([]);
+
+async function fetchStatus(): Promise<void> {
+  try {
+    const response = await api.get("/status/all");
+
+    // Same defensive shape-handling as fetchExpense(): accept a bare
+    // array, or `{ data: [...] }`, or `{ status: { data: [...] } }`.
+    const rows: unknown[] = Array.isArray(response.data)
+      ? response.data
+      : (response.data?.data ?? response.data?.status?.data ?? []);
+
+    statusOptions.value = rows.map((row: any) => ({
+      id: Number(row.id),
+      name: (row.name ?? row.status ?? row.label ?? "") as ClaimStatus
+    }));
+  } catch (error) {
+    console.error("Failed to fetch status list:", error);
+    Notify.create({
+      type: "negative",
+      message: "โหลดรายการสถานะเบิกจ่ายไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      position: "top"
+    });
+  }
+}
+
+// What the dropdowns actually render: live data from the API when
+// available, falling back to the static STATUS_OPTIONS list (defined
+// further below) while /status/all is loading or if it fails — so the
+// selects are never left empty.
+const statusSelectOptions = computed<StatusOption[]>(() =>
+  statusOptions.value.length
+    ? statusOptions.value
+    : STATUS_OPTIONS.map((name, i) => ({ id: i, name }))
+);
+
+// Options for the "สถานะเบิกจ่าย" filter dropdown in the table's filter row.
+// Built from the same live statusSelectOptions used by the two dialogs,
+// with an extra "ทุกสถานะ" (all) option prepended. The filter value is the
+// status name itself (or "all"), so filteredClaims below can compare
+// directly against c.status with no separate lookup map.
+const statusFilterOptions = computed<Option[]>(() => [
+  { value: "all", label: "ทุกสถานะ" },
+  ...statusSelectOptions.value.map(s => ({ value: s.name, label: s.name }))
+]);
+
+// FIX: this is the piece that was missing. `statusFilter` holds the
+// *status name* ("all" or a ClaimStatus string) because that's what the
+// filter <q-select> and the client-side filteredClaims comparison need.
+// But fetchExpense() sends a `statusId` query param to the backend, and no
+// such variable existed anywhere in the file — every call to fetchExpense()
+// was throwing "ReferenceError: statusId is not defined" before it could
+// even reach the API.
+//
+// This computed bridges the two: it looks up the numeric id that matches
+// the selected status name against the *real* list loaded from
+// GET /status/all (statusOptions, not the STATUS_OPTIONS fallback — using
+// the fallback's fake index-based ids here could send the wrong id to the
+// backend and silently filter the wrong rows). Returns undefined when
+// "all" is selected, or while /status/all hasn't loaded yet / failed.
+const statusId = computed<number | undefined>(() => {
+  if (statusFilter.value === "all") return undefined;
+  return statusOptions.value.find(s => s.name === statusFilter.value)?.id;
+});
+
+interface BenefitOption {
+  id: number;
+  name: string;
+}
+
+// Static fallback list, used only until GET /benefit/all resolves (or if
+// it fails) — mirrors the field names returned by the API
+// (benefitname), see fetchBenefit() below.
+const BENEFIT_OPTIONS: readonly string[] = [
+  "ข้าราชการ",
+  "อปท.",
+  "ประกันสังคม",
+  "ชำระเงินเอง"
+];
+
+// Benefit/coverage-type list loaded from GET /benefit/all, used to
+// populate the "สิทธิ์การรักษา" dropdown in the "เพิ่มตารางติดตาม" dialog.
+// Response rows use `benefitname` (not `name`), unlike /status/all.
+const benefitOptions = ref<BenefitOption[]>([]);
+
+async function fetchBenefit(): Promise<void> {
+  try {
+    const response = await api.get("/benefit/all");
+
+    // Same defensive shape-handling as fetchExpense()/fetchStatus(): accept
+    // a bare array, or `{ data: [...] }`, or `{ benefit: { data: [...] } }`.
+    const rows: unknown[] = Array.isArray(response.data)
+      ? response.data
+      : (response.data?.data ?? response.data?.benefit?.data ?? []);
+
+    benefitOptions.value = rows.map((row: any) => ({
+      id: Number(row.id),
+      name: (row.benefitname ?? row.name ?? "") as string
+    }));
+  } catch (error) {
+    console.error("Failed to fetch benefit list:", error);
+    Notify.create({
+      type: "negative",
+      message: "โหลดรายการสิทธิ์การรักษาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      position: "top"
+    });
+  }
+}
+
+// What the "สิทธิ์การรักษา" dropdown actually renders: live data from the
+// API when available, falling back to BENEFIT_OPTIONS while /benefit/all
+// is loading or if it fails — so the select is never left empty.
+const benefitSelectOptions = computed<BenefitOption[]>(() =>
+  benefitOptions.value.length
+    ? benefitOptions.value
+    : BENEFIT_OPTIONS.map((name, i) => ({ id: i, name }))
+);
+
+const periodClaims = computed<ClaimRecord[]>(() => CLAIM_RECORDS.value);
+
+// Client-side date input (YYYY-MM-DD) -> the DD/MM/YYYY format used by
+// formatDate()/deployDate, so it can be compared directly.
+function toDisplayDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-");
+  if (!y || !m || !d) return "";
+  return `${d}/${m}/${y}`;
+}
+
+// Filters periodClaims by status + the three filter-row fields
+// (งานออกหน่วย / สถานที่ / วันที่ออกหน่วย). titleQuery/orgQuery/deployDateQuery
+// and statusFilter (via statusId) are also sent to the API as params in
+// fetchExpense() — this client-side pass is a backstop so the table
+// narrows correctly even if the backend ignores those params or uses
+// different param names, instead of silently showing every row regardless
+// of what's typed/selected in the filters.
+const filteredClaims = computed<ClaimRecord[]>(() => {
+  const wanted = statusFilter.value;
   const titleQ = titleQuery.value.trim().toLowerCase();
   const orgQ = orgQuery.value.trim().toLowerCase();
-  const dateQ = deployDateQuery.value.trim();
+  const deployQ = deployDateQuery.value.trim();
+  const deployDisplay = deployQ ? toDisplayDate(deployQ) : "";
 
-  return filteredClaims.value.filter(c => {
-    if (idQ && !c.id.toLowerCase().includes(idQ)) return false;
+  return periodClaims.value.filter(c => {
+    if (wanted !== "all" && c.status !== wanted) return false;
     if (titleQ && !c.title.toLowerCase().includes(titleQ)) return false;
     if (orgQ && !c.orgName.toLowerCase().includes(orgQ)) return false;
-    if (dateQ && c.deployDate !== dateQ) return false;
+    if (deployDisplay && c.deployDate !== deployDisplay) return false;
     return true;
+  });
+});
+
+// c.id is a number, so it needs String() before .toLowerCase().
+const searchedClaims = computed<ClaimRecord[]>(() => {
+  const q = search.value.trim().toLowerCase();
+  return filteredClaims.value.filter(c => {
+    if (!q) return true;
+    return (
+      String(c.id).toLowerCase().includes(q) ||
+      c.title.toLowerCase().includes(q) ||
+      c.orgName.toLowerCase().includes(q)
+    );
   });
 });
 
@@ -1085,23 +1183,9 @@ function isOverdue(row: ClaimRecord): boolean {
   return row.status === "ล่าช้า >3 เดือน" || row.status === "ล่าช้า >6 เดือน";
 }
 
-// The header "broadcast" button always covers every overdue round in the
-// system, independent of the current filters — it's a notification action,
-// not a view of the filtered data.
 const overdueCount = computed(
   () => CLAIM_RECORDS.value.filter(isOverdue).length
 );
-
-/* =========================================================================
- * Claims table: server-request-style pagination/sorting
- *
- * All the actual data already lives on the client (searchedClaims), but we
- * still drive the table through q-table's @request contract — sort, page,
- * and slice inside onTableRequest, same shape as Quasar's own server-side
- * pagination example — so the loading state, page size, and sort headers
- * all behave the same way they would against a real API, and swapping in
- * a real backend later only means changing what onTableRequest fetches.
- * ========================================================================= */
 
 const tableRef = useTemplateRef<{ requestServerInteraction: () => void }>(
   "tableRef"
@@ -1123,14 +1207,15 @@ function getSortValue(row: ClaimRecord, sortBy: string): string | number {
     case "receivedAmount":
       return row.receivedAmount;
     case "pendingAmount":
-      return row.claimAmount - row.receivedAmount;
+      return row.overdueAmount;
     case "deployDate":
+      return row.deployDate;
     case "claimDate":
-      return row[sortBy];
+      return row.claimDate;
     case "status":
       return row.status;
-    case "id":
-      return row.id;
+    case "code":
+      return row.code;
     case "title":
       return row.title;
     case "orgName":
@@ -1152,8 +1237,6 @@ function onTableRequest(props: {
 
   tableLoading.value = true;
 
-  // Emulated round-trip so the loading state (and the pattern itself)
-  // matches what a real server call would look like.
   setTimeout(() => {
     let data = [...searchedClaims.value];
 
@@ -1184,30 +1267,36 @@ function onTableRequest(props: {
   }, 200);
 }
 
-// Any change to the underlying filtered/searched set (fiscal year,
-// quarter, status filter, or the search box) re-requests from page 1 —
-// otherwise the table could end up "stuck" on a page number that no
-// longer exists once the result set shrinks.
-watch(searchedClaims, () => {
+// Local (client-side) refinements — id/title/org quick search + status
+// filter — just re-slice/re-sort what's already loaded, no need to hit the
+// API again.
+watch([searchedClaims], () => {
   pagination.value.page = 1;
   tableRef.value?.requestServerInteraction();
 });
 
-onMounted(() => {
-  tableRef.value?.requestServerInteraction();
+// These filters are sent to the API (see fetchExpense), so changing them
+// triggers a real refetch. titleQuery/orgQuery/deployDateQuery already
+// carry Quasar's own debounce (300–400ms) via the input's `debounce` prop,
+// so the values here only change after the user pauses typing.
+//
+// FIX: statusFilter is now included too — it drives the `statusId` param
+// sent to fetchExpense(), so changing the "สถานะเบิกจ่าย" dropdown needs to
+// trigger a real refetch just like the other filters, not just a
+// client-side re-slice.
+watch([fiscalYear, titleQuery, orgQuery, deployDateQuery, statusFilter], () => {
+  fetchExpense();
 });
 
-/* =========================================================================
- * Formatting helpers
- * ========================================================================= */
+onMounted(() => {
+  fetchExpense();
+  fetchStatus();
+  fetchBenefit();
+});
 
 function fmtBaht(amount: number): string {
   return `฿${Math.round(amount).toLocaleString("en-US")}`;
 }
-
-/* =========================================================================
- * KPI cards (fully derived from periodClaims)
- * ========================================================================= */
 
 const totalClaimed = computed(() =>
   periodClaims.value
@@ -1219,9 +1308,6 @@ const totalReceived = computed(() =>
   periodClaims.value.reduce((sum, c) => sum + c.receivedAmount, 0)
 );
 
-// Pending = unpaid portion of everything already submitted, plus the
-// forecast amount of rounds still awaiting submission — this is the
-// figure the department actually needs to chase or plan for.
 const totalPending = computed(() =>
   periodClaims.value.reduce(
     (sum, c) => sum + (c.claimAmount - c.receivedAmount),
@@ -1281,10 +1367,6 @@ const kpis = computed<Kpi[]>(() => [
   }
 ]);
 
-/* =========================================================================
- * Donut: received vs pending
- * ========================================================================= */
-
 const donutSlices = computed(() => [
   { label: "ได้รับแล้ว", value: totalReceived.value, color: COLORS.profit },
   { label: "ค้างชำระ", value: totalPending.value, color: COLORS.warning }
@@ -1302,10 +1384,6 @@ const donutGradient = computed(() => {
   });
   return `conic-gradient(${stops.join(", ")})`;
 });
-
-/* =========================================================================
- * Overdue buckets (normal / >3 months / >6 months / paid)
- * ========================================================================= */
 
 interface Bucket {
   label: string;
@@ -1345,8 +1423,6 @@ const overdueBuckets = computed<Bucket[]>(() => {
 
   const maxAmount = Math.max(...Array.from(totals.values(), t => t.amount), 1);
 
-  // Only renders a row for statuses that actually appear this period, so
-  // the bucket list never shows a stray zero-width bar.
   return BUCKET_ORDER.filter(status => totals.has(status)).map(status => {
     const t = totals.get(status)!;
     return {
@@ -1359,11 +1435,6 @@ const overdueBuckets = computed<Bucket[]>(() => {
   });
 });
 
-/* =========================================================================
- * Overdue alert panels: the individual rounds behind the >3-month and
- * >6-month buckets above, each with its own quick "บันทึกรับเงิน" action.
- * ========================================================================= */
-
 const overdue3mList = computed<ClaimRecord[]>(() =>
   periodClaims.value.filter(c => c.status === "ล่าช้า >3 เดือน")
 );
@@ -1371,10 +1442,6 @@ const overdue3mList = computed<ClaimRecord[]>(() =>
 const overdue6mList = computed<ClaimRecord[]>(() =>
   periodClaims.value.filter(c => c.status === "ล่าช้า >6 เดือน")
 );
-
-/* =========================================================================
- * Status badge styling helper
- * ========================================================================= */
 
 const STATUS_BADGE_COLOR: Readonly<
   Record<ClaimStatus, { bg: string; color: string }>
@@ -1389,20 +1456,12 @@ function statusMeta(status: ClaimStatus): { bg: string; color: string } {
   return STATUS_BADGE_COLOR[status];
 }
 
-/* =========================================================================
- * Table columns
- *
- * Matches the target layout: a combined "รหัส / งานออกหน่วย" cell (title
- * plus code + org), the deployment date, the claim-submission date, the
- * three money columns (claimed / received / outstanding), status, and a
- * single "บันทึกสถานะ" action per row.
- * ========================================================================= */
-
-// Each column pins its own width via style/headerStyle, which Quasar
-// applies straight to the rendered <th>/<td>. This is what actually keeps
-// columns from crowding into each other — CSS selectors targeting
-// q-table's internal markup are fragile since that markup isn't something
-// we control directly.
+// FIX: "รหัส" column now points at `code` (the human-readable claim code
+// returned by the API) instead of the internal `id`. Amount columns' field
+// functions read the camelCase properties that actually exist on
+// ClaimRecord, and the pending-amount column is named "pendingAmount" so
+// it matches the `#body-cell-pendingAmount` slot already defined in the
+// template.
 const tableColumns = [
   {
     name: "index",
@@ -1413,9 +1472,9 @@ const tableColumns = [
     headerStyle: "width: 3%"
   },
   {
-    name: "id",
+    name: "code",
     label: "รหัส",
-    field: "id",
+    field: "code",
     align: "left" as const,
     style: "width: 7%",
     headerStyle: "width: 7%",
@@ -1478,7 +1537,7 @@ const tableColumns = [
   {
     name: "pendingAmount",
     label: "ยอดค้างชำระ",
-    field: (row: ClaimRecord) => fmtBaht(row.claimAmount - row.receivedAmount),
+    field: (row: ClaimRecord) => fmtBaht(row.overdueAmount),
     align: "right" as const,
     style: "width: 9%",
     headerStyle: "width: 9%",
@@ -1503,16 +1562,8 @@ const tableColumns = [
   }
 ];
 
-/* =========================================================================
- * Row action: บันทึกสถานะ (record the claim/received-payment update)
- *
- * "บันทึกสถานะ" — on the table's row button, the mobile card, and both
- * overdue-alert panels — opens this dialog rather than saving directly.
- * Submitting it writes the new dates/amounts back onto the matching
- * record in CLAIM_RECORDS, which flows through periodClaims →
- * filteredClaims → searchedClaims → the table/KPIs/alerts automatically.
- * ========================================================================= */
-
+// id is a string here (matches ClaimRecord.id via String(row.id)),
+// consistently, in both saveClaimStatus() and askDeleteClaim() below.
 const savingRowId = ref<string | null>(null);
 
 interface StatusDialogState {
@@ -1529,8 +1580,8 @@ interface StatusDialogState {
   note: string;
 }
 
-// All four statuses the dialog's dropdown can set directly — status is no
-// longer inferred only from the claimed/received amounts.
+// Static fallback list, used only until GET /status/all resolves (or if it
+// fails) — see statusSelectOptions above.
 const STATUS_OPTIONS: readonly ClaimStatus[] = [
   "รอเบิกจ่ายปกติ",
   "รับเงินครบถ้วน",
@@ -1553,7 +1604,7 @@ const statusDialog = reactive<StatusDialogState>({
 });
 
 function saveClaimStatus(row: ClaimRecord): void {
-  statusDialog.id = row.id;
+  statusDialog.id = String(row.id);
   statusDialog.title = row.title;
   statusDialog.orgName = row.orgName;
   statusDialog.deployDate = row.deployDate;
@@ -1571,86 +1622,43 @@ function closeStatusDialog(): void {
 }
 
 async function submitStatusDialog(): Promise<void> {
-  const target = CLAIM_RECORDS.value.find(c => c.id === statusDialog.id);
-  if (!target) {
-    statusDialog.show = false;
-    return;
-  }
-
   savingRowId.value = statusDialog.id;
   try {
-    // Simulated network delay; replace with the real update call.
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Persist to the backend. Payload keys are lowercase to match what
+    // mapApiRecordToClaim() reads back (raw.orgname, raw.deploydate,
+    // raw.claimamount, raw.receiveamount, raw.receivedate — note NOT
+    // "receivedamount"/"receiveddate", which were the previous typos).
+    await api.patch(`/expenses/${statusDialog.id}`, {
+      title: statusDialog.title,
+      orgname: statusDialog.orgName,
+      deploydate: statusDialog.deployDate,
+      claimdate: statusDialog.claimDate,
+      claimamount: statusDialog.claimAmount,
+      receiveamount: statusDialog.receivedAmount,
+      receivedate: statusDialog.receivedDate,
+      status: statusDialog.status,
+      note: statusDialog.note
+    });
 
-    target.title = statusDialog.title;
-    target.orgName = statusDialog.orgName;
-    target.deployDate = statusDialog.deployDate;
-    target.claimDate = statusDialog.claimDate;
-    target.claimAmount = statusDialog.claimAmount;
-    target.receivedAmount = statusDialog.receivedAmount;
-    target.receivedDate = statusDialog.receivedDate;
-    target.note = statusDialog.note;
-    target.submitted = Boolean(statusDialog.claimDate);
-
-    // Status now comes directly from the dropdown instead of being
-    // inferred from the amounts — "รับเงินครบถ้วน" still clears the
-    // overdue-days counter since a fully-paid round can't be overdue.
-    target.status = statusDialog.status;
-    if (target.status === "รับเงินครบถ้วน") {
-      target.overdueDays = 0;
-    }
-
-    // Close the dialog and refresh the table as soon as the data itself
-    // is saved. This intentionally comes *before* the Notify call below —
-    // if Notify isn't registered as a Quasar plugin in the host app, that
-    // call throws, and anything after it (including closing the dialog)
-    // would otherwise silently never run, leaving the dialog stuck open
-    // even though the save itself had already succeeded.
     statusDialog.show = false;
-    pagination.value.page = 1;
-    tableRef.value?.requestServerInteraction();
+    Notify.create({
+      type: "positive",
+      message: `บันทึกสถานะรอบ ${statusDialog.id} (${statusDialog.orgName}) สำเร็จ`,
+      position: "top"
+    });
 
-    try {
-      Notify.create({
-        type: "positive",
-        message: `บันทึกสถานะรอบ ${target.id} (${target.orgName}) สำเร็จ`,
-        position: "top"
-      });
-    } catch (notifyError) {
-      // Non-fatal: the save already succeeded and the dialog already
-      // closed above, so a missing/misconfigured Notify plugin shouldn't
-      // block or hide that.
-      console.error(
-        "Notify failed (save itself still succeeded):",
-        notifyError
-      );
-    }
+    await fetchExpense();
   } catch (error) {
     console.error("Failed to save claim status:", error);
-    try {
-      Notify.create({
-        type: "negative",
-        message: "บันทึกสถานะไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-        position: "top"
-      });
-    } catch (notifyError) {
-      console.error("Notify failed:", notifyError);
-    }
+    Notify.create({
+      type: "negative",
+      message: "บันทึกสถานะไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      position: "top"
+    });
   } finally {
     savingRowId.value = null;
   }
 }
-
-/* =========================================================================
- * Header action: เพิ่มตารางติดตาม (create a brand-new claim record)
- *
- * Separate dialog/state from the edit ("บันทึกสถานะ") flow above since a
- * new round needs the descriptive fields (title/org/fund/quarter) too,
- * not just the claim/received amounts. Submitting appends a fresh
- * ClaimRecord to CLAIM_RECORDS, which flows through periodClaims →
- * filteredClaims → searchedClaims → the table/KPIs/alerts automatically,
- * the same way the edit and delete flows do.
- * ========================================================================= */
 
 const isAddingClaim = ref(false);
 
@@ -1658,7 +1666,7 @@ interface AddDialogState {
   show: boolean;
   title: string;
   orgName: string;
-  fundSource: string;
+  benefitId: number | null;
   deployDate: string;
   claimDate: string;
   claimAmount: number;
@@ -1666,39 +1674,26 @@ interface AddDialogState {
   receivedDate: string;
   status: ClaimStatus;
   note: string;
-  period: "q1" | "q2" | "q3" | "q4";
 }
 
 const addDialog = reactive<AddDialogState>({
   show: false,
   title: "",
   orgName: "",
-  fundSource: "",
+  benefitId: null,
   deployDate: "",
   claimDate: "",
   claimAmount: 0,
   receivedAmount: 0,
   receivedDate: "",
   status: "รอเบิกจ่ายปกติ",
-  note: "",
-  period: "q1"
+  note: ""
 });
-
-// New IDs continue the existing "PLH-69-NNN" sequence rather than
-// colliding with or duplicating an existing round's code.
-function generateNewClaimId(): string {
-  const usedNumbers = CLAIM_RECORDS.value.map(c => {
-    const match = c.id.match(/PLH-69-(\d+)/);
-    return match ? parseInt(match[1], 10) : 0;
-  });
-  const nextNumber = (usedNumbers.length ? Math.max(...usedNumbers) : 0) + 1;
-  return `PLH-69-${String(nextNumber).padStart(3, "0")}`;
-}
 
 function openAddDialog(): void {
   addDialog.title = "";
   addDialog.orgName = "";
-  addDialog.fundSource = "";
+  addDialog.benefitId = null;
   addDialog.deployDate = "";
   addDialog.claimDate = "";
   addDialog.claimAmount = 0;
@@ -1706,7 +1701,6 @@ function openAddDialog(): void {
   addDialog.receivedDate = "";
   addDialog.status = "รอเบิกจ่ายปกติ";
   addDialog.note = "";
-  addDialog.period = "q1";
   addDialog.show = true;
 }
 
@@ -1726,69 +1720,42 @@ async function submitAddDialog(): Promise<void> {
 
   isAddingClaim.value = true;
   try {
-    // Simulated network delay; replace with the real create call.
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const newRecord: ClaimRecord = {
-      id: generateNewClaimId(),
+    // Same lowercase payload-key fix as submitStatusDialog() above.
+    // benefitid is the numeric id selected from the "สิทธิ์การรักษา"
+    // dropdown (see benefitSelectOptions / addDialog.benefitId above), not
+    // the display name.
+    await api.post("/expenses", {
       title: addDialog.title,
-      orgName: addDialog.orgName,
-      fundSource: addDialog.fundSource,
-      deployDate: addDialog.deployDate,
-      claimDate: addDialog.claimDate,
-      claimAmount: addDialog.claimAmount,
-      receivedAmount: addDialog.receivedAmount,
-      receivedDate: addDialog.receivedDate,
-      note: addDialog.note,
-      overdueDays: 0,
+      orgname: addDialog.orgName,
+      benefitId: addDialog.benefitId,
+      deploydate: addDialog.deployDate,
+      claimdate: addDialog.claimDate,
+      claimamount: addDialog.claimAmount,
+      receiveamount: addDialog.receivedAmount,
+      receivedate: addDialog.receivedDate,
       status: addDialog.status,
-      submitted: Boolean(addDialog.claimDate),
-      period: addDialog.period
-    };
+     
+    });
 
-    CLAIM_RECORDS.value = [...CLAIM_RECORDS.value, newRecord];
-
-    // Same ordering as the edit/delete flows: close + refresh before the
-    // Notify call, so a missing/misconfigured Notify plugin can't leave
-    // the dialog stuck open even though the record was already added.
     addDialog.show = false;
-    pagination.value.page = 1;
-    tableRef.value?.requestServerInteraction();
+    Notify.create({
+      type: "positive",
+      message: `เพิ่มรายการ (${addDialog.orgName}) สำเร็จ`,
+      position: "top"
+    });
 
-    try {
-      Notify.create({
-        type: "positive",
-        message: `เพิ่มรายการ ${newRecord.id} (${newRecord.orgName}) สำเร็จ`,
-        position: "top"
-      });
-    } catch (notifyError) {
-      console.error("Notify failed (add itself still succeeded):", notifyError);
-    }
+    await fetchExpense();
   } catch (error) {
     console.error("Failed to add claim:", error);
-    try {
-      Notify.create({
-        type: "negative",
-        message: "เพิ่มรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-        position: "top"
-      });
-    } catch (notifyError) {
-      console.error("Notify failed:", notifyError);
-    }
+    Notify.create({
+      type: "negative",
+      message: "เพิ่มรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      position: "top"
+    });
   } finally {
     isAddingClaim.value = false;
   }
 }
-
-/* =========================================================================
- * Row action: ลบ (delete a claim record)
- *
- * A confirmation dialog gates the actual removal — same reasoning as the
- * status dialog above: the row is removed from CLAIM_RECORDS (and the
- * dialog closed / table refreshed) before the Notify call, so a
- * missing/misconfigured Notify plugin can't leave the confirmation dialog
- * stuck open even though the delete itself already succeeded.
- * ========================================================================= */
 
 interface DeleteDialogState {
   show: boolean;
@@ -1805,7 +1772,7 @@ const deleteDialog = reactive<DeleteDialogState>({
 const deletingRowId = ref<string | null>(null);
 
 function askDeleteClaim(row: ClaimRecord): void {
-  deleteDialog.id = row.id;
+  deleteDialog.id = String(row.id);
   deleteDialog.orgName = row.orgName;
   deleteDialog.show = true;
 }
@@ -1820,54 +1787,33 @@ async function confirmDeleteClaim(): Promise<void> {
 
   deletingRowId.value = targetId;
   try {
-    // Simulated network delay; replace with the real delete call.
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    CLAIM_RECORDS.value = CLAIM_RECORDS.value.filter(c => c.id !== targetId);
+    await api.delete(`/expenses/${targetId}`);
 
     deleteDialog.show = false;
-    pagination.value.page = 1;
-    tableRef.value?.requestServerInteraction();
+    Notify.create({
+      type: "positive",
+      message: `ลบรายการ ${targetId} (${targetOrg}) สำเร็จ`,
+      position: "top"
+    });
 
-    try {
-      Notify.create({
-        type: "positive",
-        message: `ลบรายการ ${targetId} (${targetOrg}) สำเร็จ`,
-        position: "top"
-      });
-    } catch (notifyError) {
-      console.error(
-        "Notify failed (delete itself still succeeded):",
-        notifyError
-      );
-    }
+    await fetchExpense();
   } catch (error) {
     console.error("Failed to delete claim:", error);
-    try {
-      Notify.create({
-        type: "negative",
-        message: "ลบรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-        position: "top"
-      });
-    } catch (notifyError) {
-      console.error("Notify failed:", notifyError);
-    }
+    Notify.create({
+      type: "negative",
+      message: "ลบรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      position: "top"
+    });
   } finally {
     deletingRowId.value = null;
   }
 }
-
-/* =========================================================================
- * LINE alert action (header broadcast — unrelated to the per-row
- * "บันทึกสถานะ" button above)
- * ========================================================================= */
 
 const isSendingAlert = ref(false);
 
 async function sendLineAlert(): Promise<void> {
   isSendingAlert.value = true;
   try {
-    // Simulated network delay; replace with the real webhook call.
     await new Promise(resolve => setTimeout(resolve, 600));
     Notify.create({
       type: "positive",
@@ -1886,14 +1832,10 @@ async function sendLineAlert(): Promise<void> {
   }
 }
 
-/* =========================================================================
- * Excel export
- * ========================================================================= */
-
 const isExporting = ref(false);
 
 interface ClaimExportRow {
-  รหัสรอบ: string;
+  รหัสรอบ: number;
   งานออกหน่วย: string;
   หน่วยงานเป้าหมาย: string;
   กองทุน: string;
@@ -1911,18 +1853,10 @@ const CLAIM_EXPORT_COL_WIDTHS: readonly number[] = [
 ];
 
 function exportClaimsToExcel(): void {
-  // Only fiscal year 2026 has real claim records right now — see
-  // REAL_DATA_YEAR / periodClaims above. Exporting a different year would
-  // mean writing an empty sheet, so stop and tell the user instead
-  // (mirrors the overview dashboard's exportTripsToExcel).
-  if (fiscalYear.value !== REAL_DATA_YEAR) {
-    const label =
-      fiscalYears.find(y => y.value === fiscalYear.value)?.label ??
-      fiscalYear.value;
+  if (!searchedClaims.value.length) {
     Notify.create({
       type: "warning",
-      message: `ยังไม่มีข้อมูลการเบิกจ่ายสำหรับ${label}`,
-      caption: `มีข้อมูลจริงเฉพาะปีงบประมาณ ${fiscalYears.find(y => y.value === REAL_DATA_YEAR)?.label}`,
+      message: "ไม่มีข้อมูลการเบิกจ่ายสำหรับส่งออกในเงื่อนไขนี้",
       position: "top"
     });
     return;
@@ -1953,11 +1887,9 @@ function exportClaimsToExcel(): void {
     const yearLabel =
       fiscalYears.find(y => y.value === fiscalYear.value)?.label ??
       fiscalYear.value;
-    const periodLabel =
-      periods.find(p => p.value === activePeriod.value)?.label ?? "ทุกไตรมาส";
     XLSX.writeFile(
       workbook,
-      `รายงานการเบิกจ่าย_${yearLabel.replace(/\s|\./g, "")}_${periodLabel}.xlsx`
+      `รายงานการเบิกจ่าย_${yearLabel.replace(/\s|\./g, "")}.xlsx`
     );
   } catch (error) {
     console.error("Failed to export claims report:", error);
@@ -1987,7 +1919,6 @@ function exportClaimsToExcel(): void {
   gap: 16px;
 }
 
-/* ===== KPI cards ===== */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -2043,9 +1974,6 @@ function exportClaimsToExcel(): void {
   overflow-wrap: anywhere;
 }
 
-/* ===== Charts =====
-     Explicit two-column grid so the layout is predictable at every width
-     instead of wrapping unpredictably between ~600–900px. */
 .charts-grid {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.3fr);
@@ -2155,7 +2083,6 @@ function exportClaimsToExcel(): void {
   flex: none;
 }
 
-/* Overdue bucket bars */
 .bucket-list {
   display: flex;
   flex-direction: column;
@@ -2205,7 +2132,6 @@ function exportClaimsToExcel(): void {
   color: #8a94a3;
 }
 
-/* ===== Overdue alert panels ===== */
 .alerts-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2349,7 +2275,6 @@ function exportClaimsToExcel(): void {
   padding: 18px 8px;
 }
 
-/* ===== Claims table ===== */
 .table-card {
   background: #ffffff;
   border: 1px solid #e6e9ee;
@@ -2392,11 +2317,6 @@ function exportClaimsToExcel(): void {
   min-width: 0;
 }
 
-/* Auto-scrolls sideways only when the container is too narrow to fit all
-     11 columns comfortably (roughly tablet width). On a normal desktop
-     window the table fits inside 1000px and this never triggers; on
-     mobile, isMobile switches to the #item card view instead, so this
-     scroll only ever applies to the in-between (tablet) range. */
 .table-scroll {
   margin-top: 8px;
   overflow-x: auto;
@@ -2408,16 +2328,10 @@ function exportClaimsToExcel(): void {
   min-width: 1000px;
 }
 
-/* q-table's grid mode (mobile #item cards) renders full-width cards, not
-     a table, so the min-width/scroll above don't apply there. */
 .claims-table.q-table--grid {
   min-width: 0;
 }
 
-/* table-layout: fixed makes each <td>/<th> actually respect the
-     style/headerStyle widths set per column above, instead of the browser
-     re-sizing columns to fit the longest line of content — which is what
-     was letting the deployment title spill toward the date column. */
 .claims-table :deep(table) {
   table-layout: fixed;
 }
@@ -2432,14 +2346,7 @@ function exportClaimsToExcel(): void {
 .claims-table :deep(tbody td) {
   font-size: 0.8rem;
   color: #1a1f27;
-  /* Quasar's table cells default to white-space: nowrap, which was
-     letting the (long) deployment title ignore its column width entirely
-     and run straight over the next column instead of wrapping. */
   white-space: normal;
-  /* The ID column wraps onto two lines (title + code/org). Without a
-     shared top alignment, other columns' single-line values center
-     against that taller row height and land next to the second line
-     instead of the first — reading as if they overlap it. */
   vertical-align: top;
   padding-top: 12px;
   padding-bottom: 12px;
@@ -2450,9 +2357,8 @@ function exportClaimsToExcel(): void {
   font-weight: 600;
 }
 
-/* รหัส / งานออกหน่วย / สถานที่ — now separate columns */
 .cell-code {
-  color: #1e6fd9;
+  color: #1a1f27;
   font-weight: 700;
 }
 
@@ -2522,7 +2428,6 @@ function exportClaimsToExcel(): void {
   color: #e5484d;
 }
 
-/* ===== Mobile card (q-table grid/#item mode) ===== */
 .mobile-card {
   background: #ffffff;
   border: 1px solid #e6e9ee;
@@ -2557,7 +2462,6 @@ function exportClaimsToExcel(): void {
   color: #8a94a3;
 }
 
-/* ===== บันทึกสถานะ / เพิ่มตารางติดตาม dialogs ===== */
 .status-dialog {
   width: 440px;
   max-width: 92vw;
@@ -2643,7 +2547,6 @@ function exportClaimsToExcel(): void {
   color: #ffffff;
 }
 
-/* ===== ลบรายการ confirmation dialog ===== */
 .delete-dialog {
   width: 380px;
   max-width: 92vw;
@@ -2672,10 +2575,6 @@ function exportClaimsToExcel(): void {
   line-height: 1.6;
 }
 
-/* ===== Tablet (600px–960px) =====
-     Previously jumped straight from desktop styling to the 599px mobile
-     override, leaving tablet widths (e.g. iPads, split-screen) using
-     desktop spacing that felt cramped. */
 @media (max-width: 960px) {
   .charts-grid {
     grid-template-columns: 1fr;
@@ -2693,9 +2592,6 @@ function exportClaimsToExcel(): void {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 
-  /* The Thai table title is long enough that it fights the "เพิ่มตารางติดตาม"
-       button for space well before the 599px mobile breakpoint — drop the
-       actions onto their own row on tablet/split-screen widths too. */
   .chart-header-row {
     align-items: flex-start;
   }
@@ -2706,7 +2602,6 @@ function exportClaimsToExcel(): void {
   }
 }
 
-/* ===== Mobile ===== */
 @media (max-width: 599px) {
   .expense-page {
     padding: 14px 10px 28px;
@@ -2769,10 +2664,6 @@ function exportClaimsToExcel(): void {
     gap: 10px;
   }
 
-  /* Dialogs: same 92vw cap as desktop, but the fixed 22px side padding ate
-       too much of that on small phones (≤375px), so tighten it here. Also
-       cap dialog height so the on-screen keyboard doesn't push the save
-       button off-screen — the body already scrolls internally. */
   .status-dialog,
   .delete-dialog {
     max-height: 88vh;
@@ -2801,8 +2692,6 @@ function exportClaimsToExcel(): void {
     justify-content: center;
   }
 
-  /* Bigger tap targets for icon-only row actions and inline text actions
-       once a mouse can no longer be assumed. */
   .row-action-btn {
     min-height: 36px;
     min-width: 36px;

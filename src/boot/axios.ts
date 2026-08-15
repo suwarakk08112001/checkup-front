@@ -1,9 +1,8 @@
 // src/boot/axios.ts
 import { boot } from 'quasar/wrappers';
 import axios from 'axios';
-import type { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios'; // ✅ import type รวมกันที่บรรทัดเดียว
+import type { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import type { App } from 'vue'
-
 
 declare module 'vue' {
   interface ComponentCustomProperties {
@@ -12,10 +11,17 @@ declare module 'vue' {
   }
 }
 
+function getApiBaseURL(): string {
+  const url = import.meta.env.VITE_API_URL;
+  return typeof url === 'string' && url.length > 0
+    ? url
+    : 'http://localhost:3010/api/v1';
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:3010/api/v1',
+  baseURL: getApiBaseURL(),
 });
-console.log(api);
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
   if (token) {
@@ -41,11 +47,21 @@ const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue = [];
 };
 
+// Shape of the /auth/refresh response body. Adjust to match your API —
+// this is what lets TS actually catch a mismatch instead of silently
+// producing `any` at response.data.token.
+interface RefreshTokenResponse {
+  token: {
+    accessToken: string;
+    refreshToken: string;
+  };
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error: unknown) => {
-    const axiosError = error as AxiosError; // ✅ ใช้ type ที่ import มาแล้ว
-    const originalRequest = axiosError.config as InternalAxiosRequestConfig & { _retry?: boolean }; // ✅ เช่นกัน
+    const axiosError = error as AxiosError;
+    const originalRequest = axiosError.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     if (axiosError.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(axiosError);
@@ -71,7 +87,7 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('refreshToken');
       if (!refreshToken) throw new Error('No refresh token');
 
-      const response = await api.post('/auth/refresh', { refreshToken });
+      const response = await api.post<RefreshTokenResponse>('/auth/refresh', { refreshToken });
       const { accessToken, refreshToken: newRefresh } = response.data.token;
 
       localStorage.setItem('accessToken', accessToken);
