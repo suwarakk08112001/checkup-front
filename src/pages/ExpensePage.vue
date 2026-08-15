@@ -644,7 +644,7 @@
                  display name) — option-value points at `id`, emit-value +
                  map-options so the model holds that id directly, which is
                  what submitAddDialog() sends to the backend as
-                 `benefitid`. -->
+                 `benefitId`. -->
             <q-select
               v-model="addDialog.benefitId"
               :options="benefitSelectOptions"
@@ -1079,6 +1079,43 @@ const statusId = computed<number | undefined>(() => {
   if (statusFilter.value === "all") return undefined;
   return statusOptions.value.find(s => s.name === statusFilter.value)?.id;
 });
+
+// Same name -> id lookup as the `statusId` computed above, but as a plain
+// function so it can be called against *any* selected status name — used
+// by submitStatusDialog()/submitAddDialog() below to translate
+// statusDialog.status / addDialog.status (the display string the <q-select>
+// works with) into the numeric `statusId` the Prisma schema actually
+// requires (schema.prisma: `statusId Int` + `status Status @relation(...)`,
+// the same pattern as `benefitId`). Looks up against the real list from
+// GET /status/all only (not the STATUS_OPTIONS fallback's fake ids), so it
+// returns undefined rather than silently sending a wrong id while that
+// request hasn't resolved yet.
+//
+// FIX: tries an exact match first, then falls back to a trimmed comparison
+// — guards against the id lookup failing (and the backend later receiving
+// `statusId: undefined`, which crashes the Prisma `connect`) just because
+// the API's status name has stray leading/trailing whitespace that doesn't
+// byte-for-byte match the dropdown's value. If neither matches, logs what
+// was being compared so a genuine name mismatch (e.g. different spelling)
+// is visible in devtools instead of failing silently.
+function resolveStatusId(name: ClaimStatus): number | undefined {
+  const exact = statusOptions.value.find(s => s.name === name)?.id;
+  if (exact !== undefined) return exact;
+
+  const trimmedTarget = name.trim();
+  const trimmed = statusOptions.value.find(
+    s => s.name.trim() === trimmedTarget
+  )?.id;
+  if (trimmed !== undefined) return trimmed;
+
+  console.warn(
+    "[resolveStatusId] no match for status name:",
+    JSON.stringify(name),
+    "against loaded options:",
+    statusOptions.value.map(s => s.name)
+  );
+  return undefined;
+}
 
 interface BenefitOption {
   id: number;
@@ -1622,12 +1659,26 @@ function closeStatusDialog(): void {
 }
 
 async function submitStatusDialog(): Promise<void> {
+  const resolvedStatusId = resolveStatusId(statusDialog.status);
+  if (resolvedStatusId === undefined) {
+    Notify.create({
+      type: "warning",
+      message:
+        "ไม่พบรหัสสถานะที่เลือก กรุณารอโหลดรายการสถานะให้เสร็จแล้วลองใหม่อีกครั้ง",
+      position: "top"
+    });
+    return;
+  }
+
   savingRowId.value = statusDialog.id;
   try {
     // Persist to the backend. Payload keys are lowercase to match what
     // mapApiRecordToClaim() reads back (raw.orgname, raw.deploydate,
     // raw.claimamount, raw.receiveamount, raw.receivedate — note NOT
     // "receivedamount"/"receiveddate", which were the previous typos).
+    // status is sent as `statusId` (numeric), not the display name — the
+    // Prisma schema's Expenses model has `statusId Int` as the actual
+    // scalar column, same pattern as benefitId.
     await api.patch(`/expenses/${statusDialog.id}`, {
       title: statusDialog.title,
       orgname: statusDialog.orgName,
@@ -1636,7 +1687,7 @@ async function submitStatusDialog(): Promise<void> {
       claimamount: statusDialog.claimAmount,
       receiveamount: statusDialog.receivedAmount,
       receivedate: statusDialog.receivedDate,
-      status: statusDialog.status,
+      statusId: resolvedStatusId,
       note: statusDialog.note
     });
 
@@ -1718,12 +1769,35 @@ async function submitAddDialog(): Promise<void> {
     return;
   }
 
+  if (addDialog.benefitId === null) {
+    Notify.create({
+      type: "warning",
+      message: "กรุณาเลือกสิทธิ์การรักษาก่อนบันทึก",
+      position: "top"
+    });
+    return;
+  }
+
+  const resolvedStatusId = resolveStatusId(addDialog.status);
+  if (resolvedStatusId === undefined) {
+    Notify.create({
+      type: "warning",
+      message:
+        "ไม่พบรหัสสถานะที่เลือก กรุณารอโหลดรายการสถานะให้เสร็จแล้วลองใหม่อีกครั้ง",
+      position: "top"
+    });
+    return;
+  }
+
   isAddingClaim.value = true;
   try {
     // Same lowercase payload-key fix as submitStatusDialog() above.
-    // benefitid is the numeric id selected from the "สิทธิ์การรักษา"
-    // dropdown (see benefitSelectOptions / addDialog.benefitId above), not
-    // the display name.
+    // benefitId and statusId are the Prisma schema's actual scalar column
+    // names (schema.prisma: `benefitId Int`, `statusId Int` — both
+    // camelCase, unlike orgname/deploydate/etc. which are all-lowercase).
+    // benefitId comes straight from the "สิทธิ์การรักษา" dropdown
+    // (addDialog.benefitId already holds the numeric id, checked above).
+    // statusId was already resolved and validated above.
     await api.post("/expenses", {
       title: addDialog.title,
       orgname: addDialog.orgName,
@@ -1733,8 +1807,8 @@ async function submitAddDialog(): Promise<void> {
       claimamount: addDialog.claimAmount,
       receiveamount: addDialog.receivedAmount,
       receivedate: addDialog.receivedDate,
-      status: addDialog.status,
-     
+      statusId: resolvedStatusId,
+      note: addDialog.note
     });
 
     addDialog.show = false;
@@ -1744,7 +1818,13 @@ async function submitAddDialog(): Promise<void> {
       position: "top"
     });
 
-    await fetchExpense();
+    // Reload the whole page instead of just refetching in place, per
+    // request. Delayed briefly so the success toast above is actually
+    // visible before window.location.reload() tears down the DOM — an
+    // immediate reload would cut it off before the user sees it.
+    setTimeout(() => {
+      window.location.reload();
+    }, 800);
   } catch (error) {
     console.error("Failed to add claim:", error);
     Notify.create({
