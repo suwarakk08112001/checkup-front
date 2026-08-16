@@ -264,7 +264,10 @@
             สถานะการรับเงินและติดตามเบิกจ่ายจากกองทุน — ชี้เมาส์เพื่อดูรายละเอียด
           </div>
 
-          <div v-if="!hasStatusData" class="chart-empty">
+          <div v-if="isLoadingPayStatus" class="chart-empty">
+            กำลังโหลดข้อมูล...
+          </div>
+          <div v-else-if="!hasStatusData" class="chart-empty">
             ไม่มีข้อมูลสำหรับช่วงเวลานี้
           </div>
           <template v-else>
@@ -328,6 +331,9 @@
                 <strong :style="{ color: s.color }"
                   >฿{{ fmtNum(s.amount) }}</strong
                 >
+                <span v-if="s.overdueAmount" class="status-footer-overdue">
+                  (ค้าง ฿{{ fmtNum(s.overdueAmount) }})
+                </span>
               </div>
             </div>
           </template>
@@ -475,7 +481,8 @@ const COLORS = {
   profit: "#17a865",
   warning: "#f5a524",
   purple: "#7e3ff2",
-  info: "#29b6f6"
+  info: "#29b6f6",
+  danger: "#e5484d"
 } as const;
 
 /* =========================================================================
@@ -707,91 +714,115 @@ interface StatusItem {
   label: string;
   count: number;
   color: string;
-  /** Baht amount tied to this specific status (Waiting / Warning / Paid). */
+  /** Baht amount tied to this specific status (see getStatusDisplayAmount
+   *  for which underlying API field this pulls from per status). */
   amount: number;
+  /** Only set for "ชำระเงินไม่ครบถ้วน" — the outstanding portion still
+   *  owed, shown alongside `amount` (received so far). */
+  overdueAmount?: number;
 }
 
-const STATUS_BY_PERIOD: Readonly<
-  Record<string, { items: readonly StatusItem[] }>
-> = {
-  all: {
-    items: [
-      {
-        label: "เบิกจ่ายปกติ (Waiting)",
-        count: 2,
-        color: COLORS.info,
-        amount: 185000
-      },
-      {
-        label: "ล่าช้า >3 เดือน (Warning)",
-        count: 2,
-        color: COLORS.warning,
-        amount: 139070
-      },
-      {
-        label: "ได้รับเงินแล้ว (Paid)",
-        count: 1,
-        color: COLORS.profit,
-        amount: 122640
-      }
-    ]
-  },
-  q1: {
-    items: [
-      {
-        label: "เบิกจ่ายปกติ (Waiting)",
-        count: 1,
-        color: COLORS.info,
-        amount: 108000
-      }
-    ]
-  },
-  q2: {
-    items: [
-      {
-        label: "เบิกจ่ายปกติ (Waiting)",
-        count: 1,
-        color: COLORS.info,
-        amount: 30360
-      },
-      {
-        label: "ได้รับเงินแล้ว (Paid)",
-        count: 1,
-        color: COLORS.profit,
-        amount: 122640
-      }
-    ]
-  },
-  q3: {
-    items: [
-      {
-        label: "ล่าช้า >3 เดือน (Warning)",
-        count: 1,
-        color: COLORS.warning,
-        amount: 93000
-      }
-    ]
-  },
-  q4: {
-    items: [
-      {
-        label: "ล่าช้า >3 เดือน (Warning)",
-        count: 1,
-        color: COLORS.warning,
-        amount: 92710
-      }
-    ]
-  }
+// Labels in STATUS_BY_PERIOD are now already the friendly Thai names the
+// finance team asked for, so the footer no longer needs to rewrite them —
+// this simply passes the label through. Kept as a function (rather than
+// removing the call sites) so future relabeling only needs to happen here.
+function statusFooterLabel(pieLabel: string): string {
+  return pieLabel;
+}
+
+/* =========================================================================
+ * Fund tracking status: fetched from /dashboard/totalPayStatus (replaces
+ * the old STATUS_BY_PERIOD mock map — that data is gone now that this is
+ * wired to the real API, same pattern as revenueMix/benefitTotals below).
+ * ========================================================================= */
+
+interface PayStatusTotal {
+  statusId: number;
+  statusName: string;
+  totalCount: number;
+  totalClaimAmount: number;
+  totalReceiveAmount: number;
+  totalOverdueAmount: number;
+  isFullyPaid: boolean;
+  displayAmount: number;
+}
+
+// Fixed color per status name so the pie/footer/legend stay visually
+// consistent across periods regardless of what order the API returns
+// them in. Falls back to COLORS.purple for any future/unknown status.
+const PAY_STATUS_COLOR: Readonly<Record<string, string>> = {
+  รอเบิกจ่ายปกติ: COLORS.info,
+  ชำระเงินครบถ้วน: COLORS.profit,
+  ชำระเงินไม่ครบถ้วน: COLORS.warning,
+  ยังไม่ชำระเงิน: COLORS.danger
 };
 
-// Footer shows "รับเงินแล้ว" / "เบิกจ่ายปกติ/รออนุมัติ" / "ค้างชำระ/ล่าช้า" —
-// friendlier than the raw pie-slice labels — derived per-status rather
-// than hardcoded to a fixed set of rows.
-function statusFooterLabel(pieLabel: string): string {
-  if (pieLabel.includes("Paid")) return "รับเงินแล้ว";
-  if (pieLabel.includes("Waiting")) return "เบิกจ่ายปกติ/รออนุมัติ";
-  return "ค้างชำระ/ล่าช้า";
+// Picks the Baht figure that actually matters for each status, rather
+// than trusting whatever the API happens to put in displayAmount:
+//   - รอเบิกจ่ายปกติ:     ยอดที่เบิกไว้ (ยังไม่ถึงกำหนด)     -> totalClaimAmount
+//   - ชำระเงินครบถ้วน:    ยอดที่ได้รับเงินแล้วเต็มจำนวน       -> totalReceiveAmount
+//   - ชำระเงินไม่ครบถ้วน: ยอดที่ได้รับมาแล้วบางส่วน           -> totalReceiveAmount
+//                          (ยอดที่ยังค้างอยู่โชว์แยกผ่าน overdueAmount)
+//   - ยังไม่ชำระเงิน:     ยอดที่ยังไม่ได้รับเลย ต้องติดตาม     -> totalOverdueAmount
+function getStatusDisplayAmount(s: PayStatusTotal): number {
+  switch (s.statusName) {
+    case "รอเบิกจ่ายปกติ":
+      return s.totalClaimAmount;
+    case "ชำระเงินครบถ้วน":
+      return s.totalReceiveAmount;
+    case "ชำระเงินไม่ครบถ้วน":
+      return s.totalReceiveAmount;
+    case "ยังไม่ชำระเงิน":
+      return s.totalOverdueAmount;
+    default:
+      return s.displayAmount;
+  }
 }
+
+const payStatusTotals = ref<PayStatusTotal[]>([]);
+const isLoadingPayStatus = ref(false);
+
+async function fetchPayStatusTotals(): Promise<void> {
+  if (!fiscalYear.value) {
+    payStatusTotals.value = [];
+    return;
+  }
+
+  isLoadingPayStatus.value = true;
+  try {
+    const res = await api.get<PayStatusTotal[]>("/dashboard/totalPayStatus", {
+      params: {
+        financialYear: fiscalYear.value,
+        quater: toQuaterParam(activePeriod.value)
+      }
+    });
+    // กันกรณี response ถูกห่อไว้อีกชั้น หรือไม่ใช่ array
+    const data = res.data as unknown;
+    payStatusTotals.value = Array.isArray(data)
+      ? data
+      : Array.isArray((data as any)?.data)
+        ? (data as any).data
+        : [];
+  } catch (err) {
+    const error = err as AxiosError;
+    console.error("Failed to fetch pay status totals:", error);
+    Notify.create({
+      type: "negative",
+      message: "ดึงข้อมูลสถานะการเบิกจ่ายไม่สำเร็จ",
+      caption: error.response
+        ? `HTTP ${error.response.status}`
+        : error.message,
+      position: "top"
+    });
+    payStatusTotals.value = [];
+  } finally {
+    isLoadingPayStatus.value = false;
+  }
+}
+
+// Re-fetch whenever the toolbar's year or period changes — same trigger
+// as fetchBenefitTotals above.
+watch([fiscalYear, activePeriod], fetchPayStatusTotals, { immediate: true });
 
 interface RevenueSource {
   label: readonly string[];
@@ -847,18 +878,18 @@ async function fetchBenefitTotals(): Promise<void> {
   isLoadingBenefitTotals.value = true;
   try {
     const res = await api.get<BenefitTotal[]>("/dashboard/totalbenefit", {
-  params: {
-    financialYear: fiscalYear.value,
-    quater: toQuaterParam(activePeriod.value)
-  }
-});
-// กันกรณี response ถูกห่อไว้อีกชั้น หรือไม่ใช่ array
-const data = res.data as unknown;
-benefitTotals.value = Array.isArray(data)
-  ? data
-  : Array.isArray((data as any)?.data)
-    ? (data as any).data
-    : [];
+      params: {
+        financialYear: fiscalYear.value,
+        quater: toQuaterParam(activePeriod.value)
+      }
+    });
+    // กันกรณี response ถูกห่อไว้อีกชั้น หรือไม่ใช่ array
+    const data = res.data as unknown;
+    benefitTotals.value = Array.isArray(data)
+      ? data
+      : Array.isArray((data as any)?.data)
+        ? (data as any).data
+        : [];
   } catch (err) {
     const error = err as AxiosError;
     console.error("Failed to fetch benefit totals:", error);
@@ -1193,9 +1224,8 @@ const kpis = computed<Kpi[]>(() => {
   const profit = revenue - cost;
   const margin = revenue ? (profit / revenue) * 100 : 0;
 
-  const status = STATUS_BY_PERIOD[activePeriod.value];
-  const paidTotal = status.items
-    .filter(s => s.label.includes("Paid"))
+  const paidTotal = statusItems.value
+    .filter(s => s.label === "ชำระเงินครบถ้วน")
     .reduce((sum, s) => sum + s.amount, 0);
   const fundPercent = revenue ? Math.round((paidTotal / revenue) * 100) : 0;
 
@@ -1457,11 +1487,28 @@ function onDonutLeave(): void {
  * Pie chart: fund tracking status
  * ========================================================================= */
 
-const statusItems = computed(() =>
-  STATUS_BY_PERIOD[activePeriod.value].items.map(s => ({
-    ...s,
-    amount: s.amount * yearScale.value
-  }))
+// Zero-count statuses are filtered out here (rather than in the API
+// response) so the pie/footer only ever shows statuses that actually
+// have trips in them for the selected period — same behavior the old
+// mock map had implicitly by only listing non-empty statuses per period.
+//
+// `amount` is picked per-status via getStatusDisplayAmount rather than
+// trusting the API's own displayAmount field (see that function's
+// comment for the mapping). "ชำระเงินไม่ครบถ้วน" additionally carries
+// overdueAmount so the UI can show both what's been received and what's
+// still outstanding for that status.
+const statusItems = computed<StatusItem[]>(() =>
+  payStatusTotals.value
+    .filter(s => s.totalCount > 0)
+    .map(s => ({
+      label: s.statusName,
+      count: s.totalCount,
+      amount: getStatusDisplayAmount(s),
+      color: PAY_STATUS_COLOR[s.statusName] ?? COLORS.purple,
+      ...(s.statusName === "ชำระเงินไม่ครบถ้วน"
+        ? { overdueAmount: s.totalOverdueAmount }
+        : {})
+    }))
 );
 
 // Guards the status pie against an empty items list or an all-zero
@@ -1471,7 +1518,7 @@ const hasStatusData = computed(() =>
 );
 
 // Wide viewBox + moderate radius leaves enough horizontal room on both
-// sides for the longest label ("ล่าช้า >3 เดือน (Warning): 2 รอบ") so it
+// sides for the longest label ("ยังไม่ชำระเงิน: 2 รอบ") so it
 // never runs off the SVG canvas.
 const STATUS_PIE = {
   viewBoxW: 380,
@@ -1481,9 +1528,10 @@ const STATUS_PIE = {
   radius: 66
 } as const;
 
-// Splits a label like "ล่าช้า >3 เดือน (Warning)" into two shorter lines
-// at the opening parenthesis, so each line is narrow enough to fit
-// inside the canvas instead of overflowing past the edge.
+// Splits a label at the opening parenthesis (if any) into two shorter
+// lines, so each line is narrow enough to fit inside the canvas instead
+// of overflowing past the edge. The current labels are short enough not
+// to need this, but it's kept so a future longer label still wraps.
 function splitLabel(label: string): string[] {
   const idx = label.indexOf("(");
   if (idx === -1) return [label];
@@ -1548,13 +1596,14 @@ const hoveredStatusLabel = ref<string | null>(null);
 
 function onStatusHover(
   event: MouseEvent,
-  slice: { label: string; count: number; amount: number }
+  slice: { label: string; count: number; amount: number; overdueAmount?: number }
 ): void {
   hoveredStatusLabel.value = slice.label;
-  showTooltip(event, slice.label, [
-    `${slice.count} รอบ`,
-    `฿${fmtNum(slice.amount)}`
-  ]);
+  const lines = [`${slice.count} รอบ`, `฿${fmtNum(slice.amount)}`];
+  if (slice.overdueAmount) {
+    lines.push(`ค้างชำระ: ฿${fmtNum(slice.overdueAmount)}`);
+  }
+  showTooltip(event, slice.label, lines);
 }
 
 function onStatusLeave(): void {
@@ -2008,6 +2057,11 @@ function onHbarLeave(): void {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.status-footer-overdue {
+  color: #8a94a3;
+  font-size: 0.76rem;
 }
 
 /* ===== Revenue mix horizontal bar chart ===== */
