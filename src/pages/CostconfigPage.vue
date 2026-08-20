@@ -89,22 +89,6 @@
             />
           </div>
 
-          <div class="cc-filter-field">
-            <label class="cc-filter-label">หมวดหมู่</label>
-            <q-select
-              dense
-              outlined
-              clearable
-              emit-value
-              map-options
-              hide-bottom-space
-              v-model="categoryFilter"
-              :options="categoryFilterOptions"
-              placeholder="ทุกหมวดหมู่"
-              class="cc-category-select"
-            />
-          </div>
-
           <q-btn
             v-if="hasActiveFilters"
             no-caps
@@ -116,93 +100,78 @@
             @click="clearFilters"
           />
         </div>
+
+        <!-- Loading state (currently only the materials tab fetches from
+             the backend; labor/vehicle stay instant since they're still
+             local seed data). -->
+        <div v-if="isLoadingActiveTab" class="cc-loading-state">
+          <q-spinner-dots size="32px" color="primary" />
+          <div class="cc-loading-text">กำลังโหลดข้อมูล...</div>
+        </div>
+
         <q-table
-        v-if="filteredItems.length"
-        flat
-        :rows="filteredItems"
-        :columns="ccColumns"
-        row-key="id"
-        v-model:pagination="tablePagination"
-        :rows-per-page-options="[5, 10, 20, 50]"
-        rows-per-page-label="Records per page:"
-        class="cc-qtable cc-desktop-table"
-      >
-        <template v-slot:body="props">
-          <q-tr :props="props">
-            <q-td key="no" :props="props" class="cc-td-no">
-              {{
-                (tablePagination.page - 1) * tablePagination.rowsPerPage +
-                props.rowIndex +
-                1
-              }}
-            </q-td>
-            <q-td key="code" :props="props" class="cc-td-code">
-              <span class="cc-code-text">{{ props.row.code }}</span>
-            </q-td>
-            <q-td key="name" :props="props" class="cc-td-name">
-              {{ props.row.name }}
-            </q-td>
-            <q-td key="category" :props="props" class="cc-td-category">
-              <span
-                class="cc-category-chip"
-                :class="categoryPillClass(props.row.category)"
-                >{{ props.row.category }}</span
-              >
-            </q-td>
-            <q-td key="unit" :props="props" class="cc-td-unit">
-              <q-select
-                dense
-                outlined
-                use-input
-                hide-selected
-                fill-input
-                new-value-mode="add-unique"
-                :model-value="props.row.unit"
-                :options="unitInputOptions"
-                class="cc-unit-select"
-                @update:model-value="val => setItemUnit(props.row.id, val)"
-                @filter="filterUnitOptions"
-              />
-            </q-td>
-            <q-td key="price" :props="props" class="cc-td-price">
-              <q-input
-                dense
-                borderless
-                type="number"
-                prefix="฿"
-                class="cc-price-input"
-                :model-value="props.row.price"
-                @update:model-value="val => setItemPrice(props.row.id, val)"
-              />
-            </q-td>
-            <q-td key="vendor" :props="props" class="cc-td-vendor">
-              {{ props.row.vendor }}
-            </q-td>
-            <q-td key="actions" :props="props" class="cc-td-actions">
-              <q-btn
-                flat
-                dense
-                icon="edit"
-                size="sm"
-                class="cc-row-edit-btn"
-                @click="openEditDialog(props.row)"
-              />
-              <q-btn
-                flat
-                dense
-                icon="delete_outline"
-                size="sm"
-                class="cc-row-delete-btn"
-                @click="requestDelete(props.row)"
-              />
-            </q-td>
-          </q-tr>
-        </template>
-      </q-table>
+          v-else-if="filteredItems.length"
+          flat
+          :rows="filteredItems"
+          :columns="ccColumns"
+          row-key="id"
+          v-model:pagination="tablePagination"
+          :rows-per-page-options="[5, 10, 20, 50]"
+          rows-per-page-label="Records per page:"
+          class="cc-qtable cc-desktop-table"
+        >
+          <template v-slot:body="props">
+            <q-tr :props="props">
+              <q-td key="no" :props="props" class="cc-td-no">
+                {{
+                  (tablePagination.page - 1) * tablePagination.rowsPerPage +
+                  props.rowIndex +
+                  1
+                }}
+              </q-td>
+              <q-td key="code" :props="props" class="cc-td-code">
+                <span class="cc-code-text">{{ props.row.code }}</span>
+              </q-td>
+              <q-td key="name" :props="props" class="cc-td-name">
+                {{ props.row.name }}
+              </q-td>
+              <q-td key="unit" :props="props" class="cc-td-unit">
+                <span class="cc-unit-text">{{ props.row.unit }}</span>
+              </q-td>
+              <q-td key="price" :props="props" class="cc-td-price">
+                <span class="cc-price-text">฿{{ formatPrice(props.row.price) }}</span>
+              </q-td>
+              <q-td key="vendor" :props="props" class="cc-td-vendor">
+                {{ props.row.vendor }}
+              </q-td>
+              <q-td key="actions" :props="props" class="cc-td-actions">
+                <q-btn
+                  flat
+                  dense
+                  icon="edit"
+                  size="sm"
+                  class="cc-row-edit-btn"
+                  @click="openEditDialog(props.row)"
+                />
+                <q-btn
+                  flat
+                  dense
+                  icon="delete_outline"
+                  size="sm"
+                  class="cc-row-delete-btn"
+                  @click="requestDelete(props.row)"
+                />
+              </q-td>
+            </q-tr>
+          </template>
+        </q-table>
       </div>
 
       <!-- ===== Mobile card list ===== -->
-      <div v-if="filteredItems.length" class="cc-mobile-list">
+      <div
+        v-if="!isLoadingActiveTab && filteredItems.length"
+        class="cc-mobile-list"
+      >
         <div
           v-for="item in pagedItems"
           :key="item.id"
@@ -213,9 +182,6 @@
               <span class="cc-code-text">{{ item.code }}</span>
               <div class="cc-item-title">{{ item.name }}</div>
             </div>
-            <span class="cc-category-chip" :class="categoryPillClass(item.category)">{{
-              item.category
-            }}</span>
           </div>
 
           <div class="cc-mobile-vendor">{{ item.vendor }}</div>
@@ -223,31 +189,11 @@
           <div class="cc-mobile-fields">
             <div class="cc-mobile-field">
               <span class="cc-mobile-field-label">หน่วยนับ</span>
-              <q-select
-                dense
-                outlined
-                use-input
-                hide-selected
-                fill-input
-                new-value-mode="add-unique"
-                :model-value="item.unit"
-                :options="unitInputOptions"
-                class="cc-unit-select"
-                @update:model-value="val => setItemUnit(item.id, val)"
-                @filter="filterUnitOptions"
-              />
+              <span class="cc-unit-text">{{ item.unit }}</span>
             </div>
             <div class="cc-mobile-field">
               <span class="cc-mobile-field-label">ราคาอ้างอิง</span>
-              <q-input
-                dense
-                outlined
-                type="number"
-                prefix="฿"
-                class="cc-price-input"
-                :model-value="item.price"
-                @update:model-value="val => setItemPrice(item.id, val)"
-              />
+              <span class="cc-price-text">฿{{ formatPrice(item.price) }}</span>
             </div>
           </div>
 
@@ -298,7 +244,7 @@
 
       <!-- ===== Empty states ===== -->
       <div
-        v-if="!filteredItems.length && hasActiveFilters"
+        v-if="!isLoadingActiveTab && !filteredItems.length && hasActiveFilters"
         class="cc-empty-state"
       >
         <q-icon name="search_off" size="28px" class="cc-empty-icon" />
@@ -314,7 +260,10 @@
         />
       </div>
 
-      <div v-else-if="!filteredItems.length" class="cc-empty-state">
+      <div
+        v-else-if="!isLoadingActiveTab && !filteredItems.length"
+        class="cc-empty-state"
+      >
         <q-icon name="inventory_2" size="28px" class="cc-empty-icon" />
         <div class="cc-empty-title">ยังไม่มีรายการในหมวดนี้</div>
         <div class="cc-empty-sub">
@@ -338,34 +287,15 @@
         </q-card-section>
 
         <q-card-section class="cc-item-dialog-body">
-          <div class="cc-dialog-grid">
-            <div class="cc-dialog-code-field">
-              <div class="cc-dialog-code-label">รหัสรายการ</div>
-              <div class="cc-dialog-code-readonly">{{ form.code }}</div>
-            </div>
-            <q-input
-              dense
-              outlined
-              v-model="form.name"
-              label="ชื่อรายการ *"
-              class="cc-dialog-name-input"
-            />
-          </div>
+          <q-input
+            dense
+            outlined
+            v-model="form.name"
+            label="ชื่อรายการ *"
+            class="cc-dialog-field"
+          />
 
           <div class="cc-dialog-row">
-            <q-select
-              dense
-              outlined
-              use-input
-              hide-selected
-              fill-input
-              new-value-mode="add-unique"
-              v-model="form.category"
-              :options="categoryInputOptions"
-              label="หมวดหมู่ *"
-              class="cc-dialog-field"
-              @filter="filterCategoryOptions"
-            />
             <q-select
               dense
               outlined
@@ -379,9 +309,6 @@
               class="cc-dialog-field"
               @filter="filterUnitOptions"
             />
-          </div>
-
-          <div class="cc-dialog-row">
             <q-input
               dense
               outlined
@@ -391,23 +318,26 @@
               label="ราคาอ้างอิง (บาท) *"
               class="cc-dialog-field"
             />
-            <q-input
-              dense
-              outlined
-              v-model="form.vendor"
-              :label="activeTabConfig.vendorLabel"
-              class="cc-dialog-field"
-            />
           </div>
+
+          <q-input
+            dense
+            outlined
+            v-model="form.vendor"
+            :label="activeTabConfig.vendorLabel"
+            class="cc-dialog-field"
+          />
         </q-card-section>
 
         <q-card-actions align="right" class="cc-item-dialog-actions">
-          <q-btn no-caps flat label="ยกเลิก" @click="closeDialog" />
+          <q-btn no-caps flat label="ยกเลิก" :disable="savingItem" @click="closeDialog" />
           <q-btn
             no-caps
             unelevated
             label="บันทึกรายการ"
             class="cc-primary-btn"
+            :loading="savingItem"
+            :disable="savingItem"
             @click="saveItem"
           />
         </q-card-actions>
@@ -449,22 +379,57 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
-import { Notify } from "quasar";
-
+import { computed, reactive, ref, watch, onMounted, onUnmounted } from "vue";
+import { useQuasar } from "quasar";
+import { api } from "@/boot/axios";
+import type { AxiosError } from "axios";
+ 
+const $q = useQuasar();
+ 
+// ─── Notify dialog (matches the Ignore page's pattern: an animated card
+// dialog with a progress-bar auto-dismiss, instead of plain toast) ────────
+const NOTIFY_DURATION = 2500;
+const showNotifyDialog = ref(false);
+const notifySuccess = ref(true);
+const notifyMessage = ref("");
+const notifyKey = ref(0);
+let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+ 
+function openNotify(success: boolean, message: string): void {
+  if (notifyTimer) clearTimeout(notifyTimer);
+  notifySuccess.value = success;
+  notifyMessage.value = message;
+  notifyKey.value++;
+  showNotifyDialog.value = true;
+  notifyTimer = setTimeout(() => {
+    showNotifyDialog.value = false;
+  }, NOTIFY_DURATION);
+}
+ 
+// Extracts a server-provided error message when available, falling back to
+// a generic one — same pattern as the Ignore page's AxiosError handling.
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const error = err as AxiosError<{ message?: string }>;
+  return error.response?.data?.message ?? fallback;
+}
+ 
 /* =========================================================================
  * Tabs
  *
  * All three tabs (materials/reagents, labor, vehicle/fuel) share the exact
- * same data shape — code, name, category, unit, reference price, and a
- * "vendor" style field whose label changes per tab (supplier for
- * materials, agency for labor, provider for vehicles). One generic list +
- * dialog implementation drives all of them; only seed data, code prefix,
- * and suggested units/categories/vendor-label differ per tab.
+ * same data shape — code, name, unit, reference price, and a "vendor"
+ * style field whose label changes per tab (supplier for materials, agency
+ * for labor, provider for vehicles). One generic list + dialog
+ * implementation drives all of them; only seed data, code prefix, and
+ * suggested units/vendor-label differ per tab.
+ *
+ * The "materials" tab's data now comes from GET {{baseURL}}/material
+ * instead of local seed data — see fetchMaterials() below. Labor and
+ * vehicle still use local mock data until their endpoints exist.
  * ========================================================================= */
-
+ 
 type TabId = "materials" | "labor" | "vehicle";
-
+ 
 interface TabConfig {
   id: TabId;
   label: string;
@@ -480,7 +445,7 @@ interface TabConfig {
   addLabel: string;
   saveLabel: string;
 }
-
+ 
 const TABS: readonly TabConfig[] = [
   {
     id: "materials",
@@ -521,101 +486,48 @@ const TABS: readonly TabConfig[] = [
     saveLabel: "บันทึกค่าพาหนะ/น้ำมัน"
   }
 ];
-
+ 
 const activeTab = ref<TabId>("materials");
 const activeTabConfig = computed(
   () => TABS.find(t => t.id === activeTab.value) ?? TABS[0]
 );
-
+ 
 function switchTab(id: TabId): void {
   activeTab.value = id;
   clearFilters();
-  // FIX: the inline unit/category autocomplete option lists were left
-  // holding the *previous* tab's suggestions until the user typed into a
-  // filter box. Reset them here so switching tabs immediately shows the
-  // right suggestions.
+  // FIX: the inline unit autocomplete option list was left holding the
+  // *previous* tab's suggestions until the user typed into a filter box.
+  // Reset it here so switching tabs immediately shows the right
+  // suggestions.
   unitInputOptions.value = [...UNIT_SUGGESTIONS[id]];
-  categoryInputOptions.value = [...CATEGORY_SUGGESTIONS[id]];
 }
-
+ 
 /* =========================================================================
  * Cost items
  * ========================================================================= */
-
+ 
 interface CostItem {
   id: string;
   code: string;
   name: string;
   unit: string;
   price: number;
-  category: string;
   vendor: string;
 }
-
-// Suggested categories/units per tab — shown in the filter dropdown and as
-// autocomplete options in the create/edit dialog and inline unit select.
-// Users can still type a new value that isn't in this list
-// (new-value-mode="add-unique").
-const CATEGORY_SUGGESTIONS: Record<TabId, string[]> = {
-  materials: ["น้ำยาตรวจ Lab", "เวชภัณฑ์สิ้นเปลือง", "อุปกรณ์การแพทย์"],
-  labor: ["แพทย์", "พยาบาล", "นักเทคนิคการแพทย์", "เจ้าหน้าที่ทั่วไป"],
-  vehicle: ["รถตรวจสุขภาพเคลื่อนที่", "รถตู้ขนอุปกรณ์", "น้ำมันเชื้อเพลิง"]
-};
-
+ 
+// Suggested units per tab — shown as autocomplete options in the
+// create/edit dialog and inline unit select. Users can still type a new
+// value that isn't in this list (new-value-mode="add-unique").
 const UNIT_SUGGESTIONS: Record<TabId, string[]> = {
   materials: ["เทสต์", "ชุด", "แผ่น", "หลอด", "ภาพ", "คน", "ขวด", "กล่อง"],
   labor: ["ต่อชม.", "ต่อกะ", "ต่อวัน", "ต่อเที่ยว"],
   vehicle: ["ต่อลิตร", "ต่อกม.", "ต่อเที่ยว", "ต่อวัน"]
 };
-
+ 
 const costData = reactive<Record<TabId, CostItem[]>>({
-  materials: [
-    {
-      id: "mat-1",
-      code: "MAT-001",
-      name: "น้ำยาตรวจความสมบูรณ์ของเม็ดเลือด (CBC Reagent)",
-      unit: "เทสต์",
-      price: 18.5,
-      category: "น้ำยาตรวจ Lab",
-      vendor: "Sysmex Thailand"
-    },
-    {
-      id: "mat-2",
-      code: "MAT-002",
-      name: "น้ำยาตรวจระดับน้ำตาลในเลือด (FBS Glucose Reagent)",
-      unit: "เทสต์",
-      price: 8,
-      category: "น้ำยาตรวจ Lab",
-      vendor: "Roche Diagnostics"
-    },
-    {
-      id: "mat-3",
-      code: "MAT-003",
-      name: "น้ำยาตรวจไขมันในเลือด (Lipid Profile Set)",
-      unit: "ชุด",
-      price: 35,
-      category: "น้ำยาตรวจ Lab",
-      vendor: "Roche Diagnostics"
-    },
-    {
-      id: "mat-4",
-      code: "MAT-004",
-      name: "หลอดเก็บเลือด EDTA Tube (Purple)",
-      unit: "หลอด",
-      price: 4.2,
-      category: "เวชภัณฑ์สิ้นเปลือง",
-      vendor: "BD Vacutainer"
-    },
-    {
-      id: "mat-5",
-      code: "MAT-005",
-      name: "เข็มเจาะเลือด + Holder Safe Lock",
-      unit: "ชุด",
-      price: 6,
-      category: "อุปกรณ์การแพทย์",
-      vendor: "Nipro"
-    }
-  ],
+  // Populated by fetchMaterials() on mount — starts empty instead of
+  // seeded mock data now that this tab is backend-driven.
+  materials: [],
   labor: [
     {
       id: "lab-1",
@@ -623,7 +535,6 @@ const costData = reactive<Record<TabId, CostItem[]>>({
       name: "แพทย์ตรวจร่างกาย",
       unit: "ต่อกะ",
       price: 2500.0,
-      category: "แพทย์",
       vendor: "กลุ่มงานเวชกรรม รพ.ปะเหลียน"
     },
     {
@@ -632,7 +543,6 @@ const costData = reactive<Record<TabId, CostItem[]>>({
       name: "พยาบาลวิชาชีพ",
       unit: "ต่อกะ",
       price: 900.0,
-      category: "พยาบาล",
       vendor: "กลุ่มงานการพยาบาล"
     },
     {
@@ -641,7 +551,6 @@ const costData = reactive<Record<TabId, CostItem[]>>({
       name: "นักเทคนิคการแพทย์ (เจาะเลือด)",
       unit: "ต่อกะ",
       price: 800.0,
-      category: "นักเทคนิคการแพทย์",
       vendor: "กลุ่มงานเทคนิคการแพทย์"
     }
   ],
@@ -652,7 +561,6 @@ const costData = reactive<Record<TabId, CostItem[]>>({
       name: "รถตรวจสุขภาพเคลื่อนที่ (ตู้ X-Ray)",
       unit: "ต่อเที่ยว",
       price: 3500.0,
-      category: "รถตรวจสุขภาพเคลื่อนที่",
       vendor: "งานยานพาหนะ รพ.ปะเหลียน"
     },
     {
@@ -661,7 +569,6 @@ const costData = reactive<Record<TabId, CostItem[]>>({
       name: "น้ำมันดีเซล",
       unit: "ต่อลิตร",
       price: 31.9,
-      category: "น้ำมันเชื้อเพลิง",
       vendor: "ปตท. สาขาปะเหลียน"
     },
     {
@@ -670,83 +577,150 @@ const costData = reactive<Record<TabId, CostItem[]>>({
       name: "รถตู้ขนอุปกรณ์และเวชภัณฑ์",
       unit: "ต่อเที่ยว",
       price: 1200.0,
-      category: "รถตู้ขนอุปกรณ์",
       vendor: "งานยานพาหนะ รพ.ปะเหลียน"
     }
   ]
 });
-
+ 
 const activeItems = computed(() => costData[activeTab.value]);
-
-// Assigns each category name a consistent pastel pill color (cycling
-// through a fixed palette by a simple string hash), mirroring the
-// colored status pills in the reference tracking table. Deterministic per
-// category name so the same category always renders the same color.
-const CATEGORY_PILL_PALETTE = ["blue", "green", "amber", "purple", "teal"] as const;
-
-function categoryPillClass(category: string): string {
-  let hash = 0;
-  for (let i = 0; i < category.length; i++) {
-    hash = (hash * 31 + category.charCodeAt(i)) >>> 0;
-  }
-  const variant = CATEGORY_PILL_PALETTE[hash % CATEGORY_PILL_PALETTE.length];
-  return `cc-pill-${variant}`;
-}
-
+ 
 /* =========================================================================
- * Search + category filtering (scoped to the active tab)
+ * Fetch materials from the backend
  * ========================================================================= */
-
-const searchQuery = ref("");
-const categoryFilter = ref<string | null>(null);
-
-const hasActiveFilters = computed(
-  () => searchQuery.value.trim().length > 0 || !!categoryFilter.value
+ 
+interface MaterialApiItem {
+  id: number;
+  code: string;
+  name: string;
+  unit: string;
+  price: number;
+  vendor: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+ 
+interface MaterialApiResponse {
+  material: {
+    data: MaterialApiItem[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  message: string;
+}
+ 
+const loadingMaterials = ref(false);
+ 
+// Only the materials tab is backend-driven right now, so the loading
+// state only needs to gate that one tab's table/card list.
+const isLoadingActiveTab = computed(
+  () => activeTab.value === "materials" && loadingMaterials.value
 );
-
-// Categories actually present in the active tab's data, used to build the
-// filter dropdown (only shows categories that currently have items).
-const categoryFilterOptions = computed(() => {
-  const inUse = new Set(activeItems.value.map(i => i.category));
-  return Array.from(inUse).map(c => ({ label: c, value: c }));
+ 
+function mapMaterialApiItem(item: MaterialApiItem): CostItem {
+  return {
+    id: String(item.id),
+    code: item.code,
+    name: item.name,
+    unit: item.unit,
+    price: item.price,
+    vendor: item.vendor
+  };
+}
+ 
+async function fetchMaterials(): Promise<void> {
+  loadingMaterials.value = true;
+  try {
+    // limit set high so the client-side search/pagination below (shared
+    // with the labor/vehicle mock-data tabs) has the full data set to
+    // work with. Move to real server-side pagination once the materials
+    // catalog grows past a page or two.
+    const { data } = await api.get<MaterialApiResponse>("/material", {
+      params: { limit: 1000 }
+    });
+    costData.materials = data.material.data
+      .filter(item => !item.deletedAt)
+      .map(mapMaterialApiItem);
+  } catch (err) {
+    console.error("โหลดข้อมูลวัสดุไม่สำเร็จ", err);
+    openNotify(false, apiErrorMessage(err, "โหลดข้อมูลวัสดุไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
+  } finally {
+    loadingMaterials.value = false;
+  }
+}
+ 
+// Creates one material row on the backend (POST {{baseURL}}/material) and
+// returns it mapped to the shared CostItem shape. The API generates the
+// authoritative `code` (e.g. "MAT-0826-006") — the form no longer collects
+// or previews a code for this reason (see cc-item-dialog above).
+//
+// Response shape is assumed to mirror fetchMaterials' wrapper convention
+// ({ material: ... }); if the API ever returns the created row unwrapped
+// instead, the `.material ??` fallback below still handles it.
+async function createMaterialApi(payload: {
+  name: string;
+  unit: string;
+  price: number;
+  vendor: string;
+}): Promise<CostItem> {
+  const { data } = await api.post<{ material?: MaterialApiItem } & Partial<MaterialApiItem>>(
+    "/material",
+    payload
+  );
+  const raw = (data.material ?? data) as MaterialApiItem;
+  return mapMaterialApiItem(raw);
+}
+ 
+onMounted(() => {
+  void fetchMaterials();
 });
-
+ 
+onUnmounted(() => {
+  if (notifyTimer) clearTimeout(notifyTimer);
+});
+ 
+/* =========================================================================
+ * Search filtering (scoped to the active tab)
+ * ========================================================================= */
+ 
+const searchQuery = ref("");
+ 
+const hasActiveFilters = computed(() => searchQuery.value.trim().length > 0);
+ 
 const filteredItems = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
   return activeItems.value.filter(item => {
-    const matchesQuery =
-      !q ||
+    if (!q) return true;
+    return (
       item.name.toLowerCase().includes(q) ||
       item.code.toLowerCase().includes(q) ||
-      item.vendor.toLowerCase().includes(q);
-    const matchesCategory =
-      !categoryFilter.value || item.category === categoryFilter.value;
-    return matchesQuery && matchesCategory;
+      item.vendor.toLowerCase().includes(q)
+    );
   });
 });
-
+ 
 function clearFilters(): void {
   searchQuery.value = "";
-  categoryFilter.value = null;
 }
-
+ 
 /* =========================================================================
  * Desktop table columns + pagination
  *
  * Columns power the q-table header only — every cell is rendered through
- * the custom `body` slot in the template (chips, inline-editable unit/
- * price, action buttons), same as the reimbursement matrix. Pagination
- * state (`tablePagination`) is shared with the mobile card list below via
+ * the custom `body` slot in the template (inline-editable unit/price,
+ * action buttons), same as the reimbursement matrix. Pagination state
+ * (`tablePagination`) is shared with the mobile card list below via
  * `pagedItems`, so both views always show the same page of results, and
- * resets to page 1 whenever the search, category filter, or active tab
- * changes so it never points past the end of a newly-narrowed list.
+ * resets to page 1 whenever the search or active tab changes so it never
+ * points past the end of a newly-narrowed list.
  * ========================================================================= */
-
+ 
 const ccColumns = computed(() => [
   { name: "no", label: "ลำดับ", field: "id", align: "left" as const },
   { name: "code", label: "รหัสรายการ", field: "code", align: "left" as const },
   { name: "name", label: "รายการ", field: "name", align: "left" as const },
-  { name: "category", label: "หมวดหมู่", field: "category", align: "left" as const },
   { name: "unit", label: "หน่วยนับ", field: "unit", align: "left" as const },
   {
     name: "price",
@@ -762,13 +736,13 @@ const ccColumns = computed(() => [
   },
   { name: "actions", label: "การจัดการ", field: "id", align: "right" as const }
 ]);
-
+ 
 const tablePagination = ref({ page: 1, rowsPerPage: 10 });
-
-watch([searchQuery, categoryFilter, activeTab], () => {
+ 
+watch([searchQuery, activeTab], () => {
   tablePagination.value.page = 1;
 });
-
+ 
 // FIX: deleting the last item on the last page (or shrinking rowsPerPage)
 // used to leave `tablePagination.page` pointing past the new last page,
 // showing a blank table/card list until the user manually paged back.
@@ -782,12 +756,12 @@ watch(filteredItems, () => {
     tablePagination.value.page = maxPage;
   }
 });
-
+ 
 const pagedItems = computed(() => {
   const start = (tablePagination.value.page - 1) * tablePagination.value.rowsPerPage;
   return filteredItems.value.slice(start, start + tablePagination.value.rowsPerPage);
 });
-
+ 
 const pagedRangeStart = computed(() =>
   filteredItems.value.length
     ? (tablePagination.value.page - 1) * tablePagination.value.rowsPerPage + 1
@@ -802,16 +776,24 @@ const pagedRangeEnd = computed(() =>
 const mobileTotalPages = computed(() =>
   Math.max(1, Math.ceil(filteredItems.value.length / tablePagination.value.rowsPerPage))
 );
-
+ 
 /* =========================================================================
- * Inline live edits (unit + price) — same interaction as the reimbursement
- * rate matrix elsewhere in the app: type a value, it's applied immediately
- * to that tab's data. "บันทึกรายการต้นทุน" just confirms the save to the
- * backend once wired up.
+ * Unit/price display
+ *
+ * The table and mobile card list used to let you edit unit/price inline
+ * (a q-select + q-input right in the row). That's been replaced with
+ * plain read-only text — use the "แก้ไข" button to open the dialog
+ * instead. unitInputOptions/filterUnitOptions are still used there, for
+ * the unit autocomplete field in the create/edit dialog.
+ *
+ * NOTE: for the materials tab, edits made through the dialog and delete
+ * below currently only mutate the in-memory `costData.materials` array —
+ * they are not yet persisted back to the /material API. Only creation
+ * (POST) and the initial GET fetch are wired up so far.
  * ========================================================================= */
-
+ 
 const unitInputOptions = ref<string[]>([...UNIT_SUGGESTIONS.materials]);
-
+ 
 function filterUnitOptions(
   val: string,
   update: (cb: () => void) => void
@@ -822,70 +804,52 @@ function filterUnitOptions(
     unitInputOptions.value = base.filter(u => u.toLowerCase().includes(needle));
   });
 }
-
-function setItemUnit(id: string, value: string | null): void {
-  const target = activeItems.value.find(i => i.id === id);
-  if (target && value) target.unit = value;
-}
-
-function setItemPrice(id: string, value: string | number | null): void {
-  const target = activeItems.value.find(i => i.id === id);
-  if (!target) return;
-  const parsed = typeof value === "number" ? value : Number(value ?? 0);
-  target.price = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-}
-
-function saveCatalog(): void {
-  Notify.create({
-    type: "positive",
-    message: `บันทึกรายการต้นทุน — ${activeTabConfig.value.label} สำเร็จ`,
-    position: "top"
+ 
+// Thousands separator + up to 2 decimals, e.g. 1234.5 -> "1,234.50".
+// Drops trailing zeros only when the value is a whole number (4 -> "4",
+// not "4.00"), which matches how the reference prices were entered.
+function formatPrice(value: number): string {
+  const hasDecimals = value % 1 !== 0;
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: hasDecimals ? 2 : 0,
+    maximumFractionDigits: 2
   });
 }
-
+ 
+function saveCatalog(): void {
+  openNotify(true, `บันทึกรายการต้นทุน — ${activeTabConfig.value.label} สำเร็จ`);
+}
+ 
 /* =========================================================================
- * Create / edit dialog (name / category / vendor, plus unit & price as a
- * convenience so the whole row can be edited from one place too)
+ * Create / edit dialog (name / vendor, plus unit & price as a convenience
+ * so the whole row can be edited from one place too)
+ *
+ * The dialog no longer collects a `code` — materials get theirs from the
+ * backend on create; labor/vehicle still get one auto-assigned locally
+ * (see nextItemCode below) since they don't have an API yet.
  * ========================================================================= */
-
+ 
 interface ItemForm {
-  code: string;
   name: string;
   unit: string;
-  category: string;
   price: number | null;
   vendor: string;
 }
-
+ 
 function emptyForm(): ItemForm {
   return {
-    code: "",
     name: "",
     unit: "",
-    category: "",
     price: null,
     vendor: ""
   };
 }
-
-const categoryInputOptions = ref<string[]>([]);
-
-function filterCategoryOptions(
-  val: string,
-  update: (cb: () => void) => void
-): void {
-  update(() => {
-    const base = CATEGORY_SUGGESTIONS[activeTab.value];
-    const needle = val.toLowerCase();
-    categoryInputOptions.value = base.filter(c =>
-      c.toLowerCase().includes(needle)
-    );
-  });
-}
-
-// Next sequential code (MAT-001, MAT-002, ...) based on the highest number
+ 
+// Next sequential code (LAB-001, VEH-001, ...) based on the highest number
 // currently used within the active tab, so a new item never collides with
-// an existing one even after items have been removed.
+// an existing one even after items have been removed. Only used for the
+// labor/vehicle tabs now — materials get their code from the API response
+// on create (see createMaterialApi above).
 function nextItemCode(tabId: TabId): string {
   const prefix = TABS.find(t => t.id === tabId)!.codePrefix;
   const usedNumbers = costData[tabId]
@@ -895,142 +859,131 @@ function nextItemCode(tabId: TabId): string {
   const highest = usedNumbers.length ? Math.max(...usedNumbers) : 0;
   return `${prefix}-${String(highest + 1).padStart(3, "0")}`;
 }
-
+ 
 const dialogOpen = ref(false);
 const editingItem = ref<CostItem | null>(null);
+const savingItem = ref(false);
 const form = reactive<ItemForm>(emptyForm());
-
+ 
 function openCreateDialog(): void {
   editingItem.value = null;
   Object.assign(form, emptyForm());
-  form.code = nextItemCode(activeTab.value);
-  categoryInputOptions.value = CATEGORY_SUGGESTIONS[activeTab.value];
   unitInputOptions.value = UNIT_SUGGESTIONS[activeTab.value];
   dialogOpen.value = true;
 }
-
+ 
 function openEditDialog(item: CostItem): void {
   editingItem.value = item;
   Object.assign(form, {
-    code: item.code,
     name: item.name,
     unit: item.unit,
-    category: item.category,
     price: item.price,
     vendor: item.vendor
   });
-  categoryInputOptions.value = CATEGORY_SUGGESTIONS[activeTab.value];
   unitInputOptions.value = UNIT_SUGGESTIONS[activeTab.value];
   dialogOpen.value = true;
 }
-
+ 
 function closeDialog(): void {
+  if (savingItem.value) return;
   dialogOpen.value = false;
 }
-
-function saveItem(): void {
+ 
+async function saveItem(): Promise<void> {
   if (!form.name.trim()) {
-    Notify.create({
-      type: "warning",
-      message: "กรุณากรอกชื่อรายการ",
-      position: "top"
-    });
-    return;
-  }
-  if (!form.category.trim()) {
-    Notify.create({
-      type: "warning",
-      message: "กรุณาเลือกหรือระบุหมวดหมู่",
-      position: "top"
-    });
+    openNotify(false, "กรุณากรอกชื่อรายการ");
     return;
   }
   if (!form.unit.trim()) {
-    Notify.create({
-      type: "warning",
-      message: "กรุณาเลือกหรือระบุหน่วย",
-      position: "top"
-    });
+    openNotify(false, "กรุณาเลือกหรือระบุหน่วย");
     return;
   }
   if (form.price === null || Number.isNaN(form.price) || form.price < 0) {
-    Notify.create({
-      type: "warning",
-      message: "กรุณากรอกราคาอ้างอิงให้ถูกต้อง",
-      position: "top"
-    });
+    openNotify(false, "กรุณากรอกราคาอ้างอิงให้ถูกต้อง");
     return;
   }
-
+ 
   const tabId = activeTab.value;
-
+ 
   if (editingItem.value) {
+    // NOTE: materials edits are still local-only — no PATCH/PUT endpoint
+    // wired up yet. See comment above unitInputOptions.
     const target = costData[tabId].find(i => i.id === editingItem.value!.id);
     if (target) {
       target.name = form.name.trim();
       target.unit = form.unit.trim();
-      target.category = form.category.trim();
       target.price = form.price;
       target.vendor = form.vendor.trim();
     }
-    Notify.create({
-      type: "positive",
-      message: `บันทึกการแก้ไข ${target?.code ?? form.code} สำเร็จ`,
-      position: "top"
-    });
-  } else {
-    // FIX: Date.now() alone can collide if two items are added within the
-    // same millisecond (e.g. scripted/rapid submissions). Add a short
-    // random suffix so ids stay unique.
-    const id = `${tabId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    costData[tabId].push({
-      id,
-      code: form.code,
-      name: form.name.trim(),
-      unit: form.unit.trim(),
-      category: form.category.trim(),
-      price: form.price,
-      vendor: form.vendor.trim()
-    });
-    Notify.create({
-      type: "positive",
-      message: `เพิ่ม ${form.code} สำเร็จ`,
-      position: "top"
-    });
+    openNotify(true, `บันทึกการแก้ไข ${target?.code ?? ""} สำเร็จ`);
+    dialogOpen.value = false;
+    return;
   }
-
+ 
+  if (tabId === "materials") {
+    savingItem.value = true;
+    try {
+      const created = await createMaterialApi({
+        name: form.name.trim(),
+        unit: form.unit.trim(),
+        price: form.price,
+        vendor: form.vendor.trim()
+      });
+      costData.materials.push(created);
+      openNotify(true, `เพิ่ม ${created.code} สำเร็จ`);
+      dialogOpen.value = false;
+    } catch (err) {
+      console.error("เพิ่มรายการวัสดุไม่สำเร็จ", err);
+      openNotify(false, apiErrorMessage(err, "เพิ่มรายการวัสดุไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
+    } finally {
+      savingItem.value = false;
+    }
+    return;
+  }
+ 
+  // labor/vehicle: still local-only, no backend endpoint yet.
+  // FIX: Date.now() alone can collide if two items are added within the
+  // same millisecond (e.g. scripted/rapid submissions). Add a short
+  // random suffix so ids stay unique.
+  const id = `${tabId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const code = nextItemCode(tabId);
+  costData[tabId].push({
+    id,
+    code,
+    name: form.name.trim(),
+    unit: form.unit.trim(),
+    price: form.price,
+    vendor: form.vendor.trim()
+  });
+  openNotify(true, `เพิ่ม ${code} สำเร็จ`);
   dialogOpen.value = false;
 }
-
+ 
 /* =========================================================================
  * Delete item
  * ========================================================================= */
-
+ 
 const deleteDialogOpen = ref(false);
 const itemPendingDelete = ref<CostItem | null>(null);
-
+ 
 function requestDelete(item: CostItem): void {
   itemPendingDelete.value = item;
   deleteDialogOpen.value = true;
 }
-
+ 
 function cancelDelete(): void {
   deleteDialogOpen.value = false;
   itemPendingDelete.value = null;
 }
-
+ 
 function confirmDelete(): void {
   if (!itemPendingDelete.value) return;
   const { id, code } = itemPendingDelete.value;
   const tabId = activeTab.value;
-
+ 
   costData[tabId] = costData[tabId].filter(i => i.id !== id);
-
-  Notify.create({
-    type: "positive",
-    message: `ลบ ${code} สำเร็จ`,
-    position: "top"
-  });
+ 
+  openNotify(true, `ลบ ${code} สำเร็จ`);
   deleteDialogOpen.value = false;
   itemPendingDelete.value = null;
 }
@@ -1245,14 +1198,7 @@ function confirmDelete(): void {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-}
-
-.cc-filter-field:first-child {
   flex: 1 1 260px;
-}
-
-.cc-filter-field:last-of-type {
-  flex: 0 1 240px;
 }
 
 .cc-filter-label {
@@ -1261,8 +1207,7 @@ function confirmDelete(): void {
   color: #6b7280;
 }
 
-.cc-search-input,
-.cc-category-select {
+.cc-search-input {
   width: 100%;
 }
 
@@ -1272,6 +1217,22 @@ function confirmDelete(): void {
   color: #8a94a3;
   flex: none;
   margin-bottom: 2px;
+}
+
+/* ===== Loading state ===== */
+.cc-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 20px;
+}
+
+.cc-loading-text {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #8a94a3;
 }
 
 /* ===== Desktop / tablet table (row-mode q-table) =====
@@ -1339,62 +1300,16 @@ function confirmDelete(): void {
   white-space: nowrap;
 }
 
-/* Category pill — color is assigned per category via categoryPillClass()
-   so different categories are visually distinguishable, mirroring the
-   reference table's colored status pills. */
-.cc-category-chip {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.72rem;
-  font-weight: 600;
+.cc-unit-text {
+  font-size: 0.84rem;
+  color: #374151;
+}
+
+.cc-price-text {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #2f6feb;
   white-space: nowrap;
-}
-
-.cc-pill-blue {
-  background: #e6f0fb;
-  color: #2f6feb;
-}
-
-.cc-pill-green {
-  background: #e8f8ef;
-  color: #17a865;
-}
-
-.cc-pill-amber {
-  background: #fef3e0;
-  color: #b45309;
-}
-
-.cc-pill-purple {
-  background: #f3e8fd;
-  color: #7c3aed;
-}
-
-.cc-pill-teal {
-  background: #e3f6f5;
-  color: #0f8b8d;
-}
-
-.cc-unit-select {
-  min-width: 120px;
-}
-
-.cc-price-input {
-  max-width: 130px;
-  font-weight: 700;
-}
-
-.cc-price-input :deep(input) {
-  text-align: left;
-  color: #2f6feb;
-  font-weight: 700;
-}
-
-.cc-price-input :deep(.q-field__prefix) {
-  color: #2f6feb;
-  font-weight: 700;
 }
 
 .cc-td-actions {
@@ -1553,38 +1468,6 @@ function confirmDelete(): void {
   overflow-y: auto;
 }
 
-.cc-dialog-grid {
-  display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
-  gap: 10px;
-  margin-bottom: 12px;
-  align-items: end;
-}
-
-.cc-dialog-code-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cc-dialog-code-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #6b7280;
-}
-
-.cc-dialog-code-readonly {
-  height: 40px;
-  border-radius: 4px;
-  background: #eef0f3;
-  color: #6b7280;
-  font-weight: 700;
-  font-size: 0.86rem;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-}
-
 .cc-dialog-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1709,8 +1592,7 @@ function confirmDelete(): void {
     gap: 10px;
   }
 
-  .cc-filter-field:first-child,
-  .cc-filter-field:last-of-type {
+  .cc-filter-field {
     flex: none;
     width: 100%;
   }
@@ -1729,7 +1611,6 @@ function confirmDelete(): void {
     display: flex;
   }
 
-  .cc-dialog-grid,
   .cc-dialog-row {
     grid-template-columns: 1fr;
     align-items: stretch;
