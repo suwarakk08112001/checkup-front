@@ -52,7 +52,7 @@
             </div>
           </div>
           <div class="cc-catalog-actions">
-            <span class="cc-catalog-count">{{ filteredItems.length }} รายการ</span>
+            <span class="cc-catalog-count">{{ activeTotal }} รายการ</span>
             <q-btn
               no-caps
               flat
@@ -83,6 +83,7 @@
               outlined
               clearable
               hide-bottom-space
+              debounce="400"
               v-model="searchQuery"
               :placeholder="`ค้นหารหัส, ชื่อรายการ หรือ${activeTabConfig.vendorLabel}...`"
               class="cc-search-input"
@@ -101,33 +102,31 @@
           />
         </div>
 
-        <!-- Loading state (materials and vehicle fetch from the backend;
-             labor stays instant since it's still local seed data). -->
+        <!-- Loading state — materials, vehicle, and labor all fetch from
+             the backend now. -->
         <div v-if="isLoadingActiveTab" class="cc-loading-state">
           <q-spinner-dots size="32px" color="primary" />
           <div class="cc-loading-text">กำลังโหลดข้อมูล...</div>
         </div>
 
-        <div v-else-if="filteredItems.length" class="cc-table-scroll">
+        <div v-else-if="activeItems.length" class="cc-table-scroll">
         <q-table
           flat
-          :rows="filteredItems"
+          :rows="activeItems"
           :columns="ccColumns"
           row-key="id"
           v-model:pagination="tablePagination"
           :rows-per-page-options="[5, 10, 20, 50]"
           rows-per-page-label="Records per page:"
+          :loading="isLoadingActiveTab"
           class="cc-qtable cc-desktop-table"
+          @request="onTableRequest"
         >
           <template v-slot:body="props">
             <q-tr :props="props">
               <q-td key="no" :props="props" class="cc-td-no">
-                {{
-                  (tablePagination.page - 1) * tablePagination.rowsPerPage +
-                  props.rowIndex +
-                  1
-                }}
-              </q-td>
+  {{ (props.row as CostItem | VehicleItem | PositionItem).displayIndex }}
+</q-td>
 
               <!-- Vehicle tab: GET {{baseURL}}/vehicle has its own shape
                    (type / depreciationRate / fuelEfficiency /
@@ -146,6 +145,25 @@
                 </q-td>
                 <q-td key="avgFuelPrice" :props="props" class="cc-td-price">
                   <span class="cc-price-box">฿ {{ formatPrice((props.row as VehicleItem).avgFuelPrice) }}</span>
+                </q-td>
+              </template>
+
+              <!-- Labor tab: GET {{baseURL}}/position has its own shape
+                   (position / dailyWage / hourlyWage / fieldAllowance) —
+                   no code/unit/vendor either, so it gets its own set of
+                   cells too, same treatment as vehicle above. -->
+              <template v-else-if="activeTab === 'labor'">
+                <q-td key="position" :props="props" class="cc-td-name">
+                  {{ (props.row as PositionItem).position }}
+                </q-td>
+                <q-td key="dailyWage" :props="props" class="cc-td-price">
+                  <span class="cc-price-box">฿ {{ formatPrice((props.row as PositionItem).dailyWage) }}</span>
+                </q-td>
+                <q-td key="hourlyWage" :props="props" class="cc-td-price">
+                  <span class="cc-price-box">฿ {{ formatPrice((props.row as PositionItem).hourlyWage) }}</span>
+                </q-td>
+                <q-td key="fieldAllowance" :props="props" class="cc-td-price">
+                  <span class="cc-price-box">฿ {{ formatPrice((props.row as PositionItem).fieldAllowance) }}</span>
                 </q-td>
               </template>
 
@@ -198,7 +216,7 @@
            horizontally on narrow viewports like the reference layout,
            instead of collapsing into stacked cards. -->
       <div
-        v-if="!isLoadingActiveTab && !filteredItems.length && hasActiveFilters"
+        v-if="!isLoadingActiveTab && !activeItems.length && hasActiveFilters"
         class="cc-empty-state"
       >
         <q-icon name="search_off" size="28px" class="cc-empty-icon" />
@@ -215,7 +233,7 @@
       </div>
 
       <div
-        v-else-if="!isLoadingActiveTab && !filteredItems.length"
+        v-else-if="!isLoadingActiveTab && !activeItems.length"
         class="cc-empty-state"
       >
         <q-icon name="inventory_2" size="28px" class="cc-empty-icon" />
@@ -258,18 +276,25 @@
                 dense
                 outlined
                 type="number"
+                inputmode="decimal"
+                pattern="[0-9]*\.?[0-9]*"
                 suffix="% /ปี"
                 v-model.number="vehicleForm.depreciationRate"
-                label="อัตราค่าเสื่อมราคา *"
+                label="อัตราค่าเสื่อมราคา (% /ปี) *"
+                @keydown="onPriceKeydown"
+                @paste="onPricePaste"
                 class="cc-dialog-field"
               />
               <q-input
                 dense
                 outlined
                 type="number"
-                suffix="กม./ลิตร"
+                inputmode="decimal"
+                pattern="[0-9]*\.?[0-9]*"
                 v-model.number="vehicleForm.fuelEfficiency"
-                label="อัตราสิ้นเปลืองน้ำมัน *"
+                label="อัตราสิ้นเปลืองน้ำมัน (กม./ลิตร) *"
+                @keydown="onPriceKeydown"
+                @paste="onPricePaste"
                 class="cc-dialog-field"
               />
             </div>
@@ -278,10 +303,70 @@
               dense
               outlined
               type="number"
+              inputmode="decimal"
+                pattern="[0-9]*\.?[0-9]*"
               prefix="฿"
-              suffix="/ลิตร"
+              
               v-model.number="vehicleForm.avgFuelPrice"
-              label="ราคาน้ำมันเฉลี่ย *"
+              label="ราคาน้ำมันเฉลี่ย (บาท/ลิตร) *"
+              @keydown="onPriceKeydown"
+                @paste="onPricePaste"
+              class="cc-dialog-field"
+            />
+          </template>
+
+          <!-- Labor tab: own field set matching GET {{baseURL}}/position's
+               shape — no name/unit/vendor, just the position title + the
+               three wage/allowance figures. -->
+          <template v-else-if="activeTab === 'labor'">
+            <q-input
+              dense
+              outlined
+              v-model="positionForm.position"
+              label="ตำแหน่ง *"
+              class="cc-dialog-field"
+            />
+
+            <div class="cc-dialog-row">
+              <q-input
+                dense
+                outlined
+                type="number"
+                inputmode="decimal"
+                pattern="[0-9]*\.?[0-9]*"
+                prefix="฿"
+                v-model.number="positionForm.dailyWage"
+                label="ค่าแรงต่อวัน (บาท/วัน) *"
+                @keydown="onPriceKeydown"
+                @paste="onPricePaste"
+                class="cc-dialog-field"
+              />
+              <q-input
+                dense
+                outlined
+                type="number"
+                inputmode="decimal"
+                pattern="[0-9]*\.?[0-9]*"
+                prefix="฿"
+                v-model.number="positionForm.hourlyWage"
+                label="ค่าแรงต่อชั่วโมง (บาท/ชม.)*"
+                @keydown="onPriceKeydown"
+                @paste="onPricePaste"
+                class="cc-dialog-field"
+              />
+            </div>
+
+            <q-input
+              dense
+              outlined
+              type="number"
+              inputmode="decimal"
+              pattern="[0-9]*\.?[0-9]*"
+              prefix="฿"
+              v-model.number="positionForm.fieldAllowance"
+              label="ค่าตอบแทนออกพื้นที่ (บาท) *"
+              @keydown="onPriceKeydown"
+              @paste="onPricePaste"
               class="cc-dialog-field"
             />
           </template>
@@ -309,14 +394,26 @@
                 class="cc-dialog-field"
                 @filter="filterUnitOptions"
               />
+              <!-- Reference price: digits 0-9 only. Kept as type="text"
+                   (not type="number") because a native number input still
+                   lets the browser accept e/E/+/-/. on many platforms even
+                   with a keypress guard — text + inputmode="numeric" gives
+                   the numeric mobile keyboard while `onPriceKeydown` /
+                   `onPriceInput` below fully own what characters can land
+                   in the field. -->
               <q-input
                 dense
                 outlined
                 type="number"
+                inputmode="decimal"
+                
+                autocomplete="off"
                 prefix="฿"
-                v-model.number="form.price"
+                v-model="priceDisplay"
                 label="ราคาอ้างอิง (บาท) *"
                 class="cc-dialog-field"
+                @keydown="onPriceKeydown"
+                @paste="onPricePaste"
               />
             </div>
 
@@ -381,7 +478,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch, onMounted, onUnmounted } from "vue";
 import { useQuasar } from "quasar";
-import { api } from "@/boot/axios";
+import { api } from "@/boot/axios"; // ปรับ path ให้ตรงกับ axios instance ของโปรเจกต์จริง
 import type { AxiosError } from "axios";
 
 const $q = useQuasar();
@@ -414,25 +511,90 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 }
 
 /* =========================================================================
+ * Digit-only input guard (ราคาอ้างอิง)
+ *
+ * The reference-price field must only ever contain the characters 0-9 —
+ * no decimal point, no minus sign, no scientific notation. A native
+ * type="number" input still lets browsers accept e/E/+/-/. through the
+ * keyboard in several combinations, so the field is rendered as
+ * type="text" + inputmode="numeric" instead, with these two handlers
+ * fully owning what can land in it:
+ *   - onPriceKeydown blocks any keypress that isn't a digit, backspace,
+ *     delete, arrow key, tab, or a copy/paste/select-all shortcut.
+ *   - onPricePaste strips non-digit characters out of pasted text before
+ *     it's inserted, rather than blocking the paste outright.
+ * `priceDisplay` is the string the input actually binds to; `form.price`
+ * (a number | null, used everywhere else — validation, the API payload)
+ * is kept in sync via the watcher declared right after `form` below.
+ * ========================================================================= */
+
+const ALLOWED_NAV_KEYS = new Set([
+  "Backspace",
+  "Delete",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Tab",
+  "Home",
+  "End"
+]);
+
+
+function onPriceKeydown(event: KeyboardEvent): void {
+  // Let copy/paste/select-all/cut shortcuts through (Ctrl/Cmd+C/V/A/X).
+  if (event.ctrlKey || event.metaKey) return;
+  if (ALLOWED_NAV_KEYS.has(event.key)) return;
+
+  const isDigit = /^[0-9]$/.test(event.key);
+  const isDecimalPoint = event.key === ".";
+  const alreadyHasDecimal = priceDisplay.value.includes(".");
+
+  if (isDigit) return;
+  if (isDecimalPoint && !alreadyHasDecimal) return;
+
+  event.preventDefault();
+}
+
+function onPricePaste(event: ClipboardEvent): void {
+  event.preventDefault();
+  const pasted = event.clipboardData?.getData("text") ?? "";
+
+  // Keep digits and dots only, then collapse to a single leading decimal point.
+  let cleaned = pasted.replace(/[^0-9.]/g, "");
+  const firstDotIndex = cleaned.indexOf(".");
+  if (firstDotIndex !== -1) {
+    cleaned =
+      cleaned.slice(0, firstDotIndex + 1) +
+      cleaned.slice(firstDotIndex + 1).replace(/\./g, "");
+  }
+  if (!cleaned) return;
+
+  const target = event.target as HTMLInputElement;
+  const start = target.selectionStart ?? priceDisplay.value.length;
+  const end = target.selectionEnd ?? priceDisplay.value.length;
+  const merged =
+    priceDisplay.value.slice(0, start) + cleaned + priceDisplay.value.slice(end);
+
+  // Guard against ending up with 2+ decimal points after merging with
+  // existing text (e.g. pasting "1.5" into "2.3").
+  const parts = merged.split(".");
+  priceDisplay.value =
+    parts.length > 2 ? parts[0] + "." + parts.slice(1).join("") : merged;
+}
+/* =========================================================================
  * Tabs
  *
- * Materials and labor share the same data shape — code, name, unit,
- * reference price, and a "vendor" style field whose label changes per tab
- * (supplier for materials, agency for labor). One generic list + dialog
- * implementation drives both of them.
+ * All three tabs are backend-driven with real server-side page/limit/
+ * search now:
+ * - materials: GET/POST/PATCH/DELETE {{baseURL}}/material
+ * - vehicle:   GET/POST/PATCH/DELETE {{baseURL}}/vehicle
+ * - labor:     GET/POST/PATCH/DELETE {{baseURL}}/position
  *
- * Vehicle is different: GET {{baseURL}}/vehicle returns its own shape
- * (type, depreciationRate, fuelEfficiency, avgFuelPrice — see
- * VehicleItem below) instead of code/name/unit/price/vendor, so it gets
- * its own table columns, search behavior, and create/edit form fields
- * (see the `activeTab === 'vehicle'` branches throughout this file).
- *
- * The "materials" tab's data comes from GET {{baseURL}}/material — see
- * fetchMaterials() below. Create (POST), update (PATCH), and delete
- * (DELETE) are all wired up to the backend for materials. The "vehicle"
- * tab's data comes from GET {{baseURL}}/vehicle — see fetchVehicles()
- * below — but create/update/delete aren't wired up yet (no endpoint), so
- * those stay local-only for now, same as labor.
+ * Vehicle and labor each have their own response shape instead of the
+ * generic name/unit/price/vendor one materials uses (see VehicleItem /
+ * PositionItem below), so they get their own table columns, form fields,
+ * and API wrappers throughout this file.
  * ========================================================================= */
 
 type TabId = "materials" | "labor" | "vehicle";
@@ -443,9 +605,6 @@ interface TabConfig {
   icon: string;
   codePrefix: string;
   vendorLabel: string;
-  // Catalog header card shown above the table — title/subtitle/button
-  // wording specific to this tab's catalog (e.g. "Material & Reagents
-  // Catalog" for materials), distinct from the generic page header above.
   catalogTitleTh: string;
   catalogTitleEn: string;
   catalogSubtitle: string;
@@ -499,24 +658,14 @@ const activeTabConfig = computed(
   () => TABS.find(t => t.id === activeTab.value) ?? TABS[0]
 );
 
-function switchTab(id: TabId): void {
-  activeTab.value = id;
-  clearFilters();
-  // FIX: the inline unit autocomplete option list was left holding the
-  // *previous* tab's suggestions until the user typed into a filter box.
-  // Reset it here so switching tabs immediately shows the right
-  // suggestions. Vehicle has no "unit" field/suggestions of its own.
-  unitInputOptions.value = id === "vehicle" ? [] : [...UNIT_SUGGESTIONS[id]];
-}
-
 /* =========================================================================
- * Cost items (materials + labor)
+ * Cost items (materials)
  * ========================================================================= */
 
-// The two tabs still driven by the generic name/unit/price/vendor form.
-type CostTabId = "materials" | "labor";
+type CostTabId = "materials";
 
 interface CostItem {
+  displayIndex: number;
   id: string;
   code: string;
   name: string;
@@ -525,59 +674,25 @@ interface CostItem {
   vendor: string;
 }
 
-// Suggested units per tab — shown as autocomplete options in the
+// Suggested units for materials — shown as autocomplete options in the
 // create/edit dialog and inline unit select. Users can still type a new
-// value that isn't in this list (new-value-mode="add-unique"). Vehicle
-// isn't here — it has no "unit" field in its own shape (see VehicleItem).
+// value that isn't in this list (new-value-mode="add-unique").
 const UNIT_SUGGESTIONS: Record<CostTabId, string[]> = {
-  materials: ["เทสต์", "ชุด", "แผ่น", "หลอด", "ภาพ", "คน", "ขวด", "กล่อง"],
-  labor: ["ต่อชม.", "ต่อกะ", "ต่อวัน", "ต่อเที่ยว"]
+  materials: ["เทสต์", "ชุด", "แผ่น", "หลอด", "ภาพ", "คน", "ขวด", "กล่อง"]
 };
 
 const costData = reactive<Record<CostTabId, CostItem[]>>({
-  // Populated by fetchMaterials() on mount — starts empty instead of
-  // seeded mock data now that this tab is backend-driven.
-  materials: [],
-  labor: [
-    {
-      id: "lab-1",
-      code: "LAB-001",
-      name: "แพทย์ตรวจร่างกาย",
-      unit: "ต่อกะ",
-      price: 2500.0,
-      vendor: "กลุ่มงานเวชกรรม รพ.ปะเหลียน"
-    },
-    {
-      id: "lab-2",
-      code: "LAB-002",
-      name: "พยาบาลวิชาชีพ",
-      unit: "ต่อกะ",
-      price: 900.0,
-      vendor: "กลุ่มงานการพยาบาล"
-    },
-    {
-      id: "lab-3",
-      code: "LAB-003",
-      name: "นักเทคนิคการแพทย์ (เจาะเลือด)",
-      unit: "ต่อกะ",
-      price: 800.0,
-      vendor: "กลุ่มงานเทคนิคการแพทย์"
-    }
-  ]
+  materials: [] // populated by fetchMaterials()
 });
 
 /* =========================================================================
- * Vehicle items
- *
- * GET {{baseURL}}/vehicle returns a different shape than materials/labor
- * (type / depreciationRate / fuelEfficiency / avgFuelPrice, no code, unit,
- * or vendor), so vehicle rows live in their own array instead of
- * `costData`, populated by fetchVehicles() below. Create/update/delete
- * aren't wired up to a backend endpoint yet, so those still mutate this
- * array locally, same as labor currently does for its own tab.
+ * Vehicle items — GET {{baseURL}}/vehicle has its own shape (type /
+ * depreciationRate / fuelEfficiency / avgFuelPrice, no code/unit/vendor),
+ * so vehicle rows live in their own array, populated by fetchVehicles().
  * ========================================================================= */
 
 interface VehicleItem {
+  displayIndex: number;
   id: string;
   type: string;
   depreciationRate: number;
@@ -587,13 +702,74 @@ interface VehicleItem {
 
 const vehicleItems = ref<VehicleItem[]>([]);
 
-const activeItems = computed<(CostItem | VehicleItem)[]>(() => {
+/* =========================================================================
+ * Labor (position) items — GET {{baseURL}}/position has its own shape
+ * (position / dailyWage / hourlyWage / fieldAllowance, no code/unit/
+ * vendor), so labor rows live in their own array, populated by
+ * fetchPositions().
+ * ========================================================================= */
+
+interface PositionItem {
+  displayIndex: number;
+  id: string;
+  position: string;
+  dailyWage: number;
+  hourlyWage: number;
+  fieldAllowance: number;
+}
+
+const positionItems = ref<PositionItem[]>([]);
+
+const activeItems = computed<(CostItem | VehicleItem | PositionItem)[]>(() => {
   if (activeTab.value === "vehicle") return vehicleItems.value;
+  if (activeTab.value === "labor") return positionItems.value;
   return costData[activeTab.value as CostTabId];
 });
 
 /* =========================================================================
- * Materials API (GET / POST / PATCH / DELETE)
+ * Server-side pagination + search
+ *
+ * `tablePagination` is bound to the q-table's own pagination state
+ * (page, rowsPerPage) plus `rowsNumber`, which tells q-table the true
+ * total lives on the server rather than being `activeItems.value.length`.
+ * Every page/rows-per-page change fires `onTableRequest` (q-table's
+ * built-in server-side pagination hook); every search change resets to
+ * page 1 and refetches. `searchQuery`'s own `debounce="400"` on the
+ * q-input means the watcher below fires once per pause in typing, not
+ * per keystroke.
+ * ========================================================================= */
+
+const searchQuery = ref("");
+const hasActiveFilters = computed(() => searchQuery.value.trim().length > 0);
+
+function clearFilters(): void {
+  searchQuery.value = "";
+}
+
+const tablePagination = ref({
+  page: 1,
+  rowsPerPage: 10,
+  rowsNumber: 0
+});
+
+const materialsTotal = ref(0);
+const vehiclesTotal = ref(0);
+const positionsTotal = ref(0);
+
+const activeTotal = computed(() => {
+  if (activeTab.value === "vehicle") return vehiclesTotal.value;
+  if (activeTab.value === "labor") return positionsTotal.value;
+  return materialsTotal.value;
+});
+
+interface FetchParams {
+  page: number;
+  limit: number;
+  search: string;
+}
+
+/* =========================================================================
+ * Materials API (GET / POST / PATCH / DELETE) — server-side page/limit/search
  * ========================================================================= */
 
 interface MaterialApiItem {
@@ -621,16 +797,16 @@ interface MaterialApiResponse {
 
 const loadingMaterials = ref(false);
 
-// Materials and vehicle are both backend-driven now, so the loading state
-// gates whichever of those two tabs is active; labor stays instant.
 const isLoadingActiveTab = computed(
   () =>
     (activeTab.value === "materials" && loadingMaterials.value) ||
-    (activeTab.value === "vehicle" && loadingVehicles.value)
+    (activeTab.value === "vehicle" && loadingVehicles.value) ||
+    (activeTab.value === "labor" && loadingPositions.value)
 );
 
-function mapMaterialApiItem(item: MaterialApiItem): CostItem {
+function mapMaterialApiItem(item: MaterialApiItem, displayIndex: number): CostItem {
   return {
+    displayIndex,
     id: String(item.id),
     code: item.code,
     name: item.name,
@@ -640,19 +816,21 @@ function mapMaterialApiItem(item: MaterialApiItem): CostItem {
   };
 }
 
-async function fetchMaterials(): Promise<void> {
+async function fetchMaterials(params: FetchParams): Promise<void> {
   loadingMaterials.value = true;
   try {
-    // limit set high so the client-side search/pagination below (shared
-    // with the labor/vehicle mock-data tabs) has the full data set to
-    // work with. Move to real server-side pagination once the materials
-    // catalog grows past a page or two.
     const { data } = await api.get<MaterialApiResponse>("/material", {
-      params: { limit: 1000 }
+      params: {
+        page: params.page,
+        limit: params.limit,
+        search: params.search || undefined
+      }
     });
+    const startIndex = (params.page - 1) * params.limit;
     costData.materials = data.material.data
       .filter(item => !item.deletedAt)
-      .map(mapMaterialApiItem);
+      .map((item, index) => mapMaterialApiItem(item, startIndex + index + 1));
+    materialsTotal.value = data.material.total;
   } catch (err) {
     console.error("โหลดข้อมูลวัสดุไม่สำเร็จ", err);
     openNotify(false, apiErrorMessage(err, "โหลดข้อมูลวัสดุไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
@@ -661,14 +839,9 @@ async function fetchMaterials(): Promise<void> {
   }
 }
 
-// Creates one material row on the backend (POST {{baseURL}}/material) and
-// returns it mapped to the shared CostItem shape. The API generates the
-// authoritative `code` (e.g. "MAT-0826-006") — the form no longer collects
-// or previews a code for this reason (see cc-item-dialog above).
-//
-// Response shape is assumed to mirror fetchMaterials' wrapper convention
-// ({ material: ... }); if the API ever returns the created row unwrapped
-// instead, the `.material ??` fallback below still handles it.
+// Creates one material row on the backend (POST {{baseURL}}/material).
+// The API generates the authoritative `code` (e.g. "MAT-0826-006") — the
+// form no longer collects or previews a code for this reason.
 async function createMaterialApi(payload: {
   name: string;
   unit: string;
@@ -683,12 +856,6 @@ async function createMaterialApi(payload: {
   return mapMaterialApiItem(raw);
 }
 
-// Updates one material row on the backend (PATCH {{baseURL}}/material/{:id})
-// and returns it mapped to the shared CostItem shape.
-//
-// Response shape is assumed to mirror fetchMaterials'/createMaterialApi's
-// wrapper convention ({ material: ... }); the `.material ??` fallback
-// below handles an unwrapped response too.
 async function updateMaterialApi(
   id: string,
   payload: { name: string; unit: string; price: number; vendor: string }
@@ -701,19 +868,12 @@ async function updateMaterialApi(
   return mapMaterialApiItem(raw);
 }
 
-// Deletes one material row on the backend (DELETE {{baseURL}}/material/{:id}).
 async function deleteMaterialApi(id: string): Promise<void> {
   await api.delete(`/material/${id}`);
 }
 
 /* =========================================================================
- * Vehicle API (GET only for now)
- *
- * GET {{baseURL}}/vehicle returns type/depreciationRate/fuelEfficiency/
- * avgFuelPrice instead of code/name/unit/price/vendor — see VehicleItem
- * above. No POST/PATCH/DELETE endpoint exists yet, so create/edit/delete
- * on this tab still mutate `vehicleItems` locally (see saveItem/
- * confirmDelete below), same as labor currently does for its own tab.
+ * Vehicle API (GET / POST / PATCH / DELETE) — server-side page/limit/search
  * ========================================================================= */
 
 interface VehicleApiItem {
@@ -740,8 +900,9 @@ interface VehicleApiResponse {
 
 const loadingVehicles = ref(false);
 
-function mapVehicleApiItem(item: VehicleApiItem): VehicleItem {
+function mapVehicleApiItem(item: VehicleApiItem, displayIndex: number): VehicleItem {
   return {
+    displayIndex,
     id: String(item.id),
     type: item.type,
     depreciationRate: item.depreciationRate,
@@ -750,17 +911,21 @@ function mapVehicleApiItem(item: VehicleApiItem): VehicleItem {
   };
 }
 
-async function fetchVehicles(): Promise<void> {
+async function fetchVehicles(params: FetchParams): Promise<void> {
   loadingVehicles.value = true;
   try {
-    // limit set high for the same reason as fetchMaterials — the
-    // client-side search/pagination below wants the full data set.
     const { data } = await api.get<VehicleApiResponse>("/vehicle", {
-      params: { limit: 1000 }
+      params: {
+        page: params.page,
+        limit: params.limit,
+        search: params.search || undefined
+      }
     });
+    const startIndex = (params.page - 1) * params.limit;
     vehicleItems.value = data.vehicle.data
       .filter(item => !item.deletedAt)
-      .map(mapVehicleApiItem);
+      .map((item, index) => mapVehicleApiItem(item, startIndex + index + 1));
+    vehiclesTotal.value = data.vehicle.total;
   } catch (err) {
     console.error("โหลดข้อมูลค่าพาหนะ/น้ำมันไม่สำเร็จ", err);
     openNotify(
@@ -772,9 +937,200 @@ async function fetchVehicles(): Promise<void> {
   }
 }
 
+async function createVehicleApi(payload: {
+  type: string;
+  depreciationRate: number;
+  fuelEfficiency: number;
+  avgFuelPrice: number;
+}): Promise<VehicleItem> {
+  const { data } = await api.post<{ vehicle?: VehicleApiItem } & Partial<VehicleApiItem>>(
+    "/vehicle",
+    payload
+  );
+  const raw = (data.vehicle ?? data) as VehicleApiItem;
+  return mapVehicleApiItem(raw);
+}
+
+async function updateVehicleApi(
+  id: string,
+  payload: {
+    type: string;
+    depreciationRate: number;
+    fuelEfficiency: number;
+    avgFuelPrice: number;
+  }
+): Promise<VehicleItem> {
+  const { data } = await api.patch<{ vehicle?: VehicleApiItem } & Partial<VehicleApiItem>>(
+    `/vehicle/${id}`,
+    payload
+  );
+  const raw = (data.vehicle ?? data) as VehicleApiItem;
+  return mapVehicleApiItem(raw);
+}
+
+async function deleteVehicleApi(id: string): Promise<void> {
+  await api.delete(`/vehicle/${id}`);
+}
+
+/* =========================================================================
+ * Labor (position) API (GET / POST / PATCH / DELETE) — server-side
+ * page/limit/search
+ * ========================================================================= */
+
+interface PositionApiItem {
+  id: number;
+  position: string;
+  dailyWage: number;
+  hourlyWage: number;
+  fieldAllowance: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+interface PositionApiResponse {
+  position: {
+    data: PositionApiItem[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  message: string;
+}
+
+const loadingPositions = ref(false);
+
+function mapPositionApiItem(item: PositionApiItem, displayIndex: number): PositionItem {
+  return {
+    displayIndex,
+    id: String(item.id),
+    position: item.position,
+    dailyWage: item.dailyWage,
+    hourlyWage: item.hourlyWage,
+    fieldAllowance: item.fieldAllowance
+  };
+}
+
+async function fetchPositions(params: FetchParams): Promise<void> {
+  loadingPositions.value = true;
+  try {
+    const { data } = await api.get<PositionApiResponse>("/position", {
+      params: {
+        page: params.page,
+        limit: params.limit,
+        search: params.search || undefined
+      }
+    });
+    const startIndex = (params.page - 1) * params.limit;
+    positionItems.value = data.position.data
+      .filter(item => !item.deletedAt)
+      .map((item, index) => mapPositionApiItem(item, startIndex + index + 1));
+    positionsTotal.value = data.position.total;
+  } catch (err) {
+    console.error("โหลดข้อมูลค่าแรงบุคลากรไม่สำเร็จ", err);
+    openNotify(
+      false,
+      apiErrorMessage(err, "โหลดข้อมูลค่าแรงบุคลากรไม่สำเร็จ กรุณาลองใหม่อีกครั้ง")
+    );
+  } finally {
+    loadingPositions.value = false;
+  }
+}
+
+async function createPositionApi(payload: {
+  position: string;
+  dailyWage: number;
+  hourlyWage: number;
+  fieldAllowance: number;
+}): Promise<PositionItem> {
+  const { data } = await api.post<{ position?: PositionApiItem } & Partial<PositionApiItem>>(
+    "/position",
+    payload
+  );
+  const raw = (data.position ?? data) as PositionApiItem;
+  return mapPositionApiItem(raw);
+}
+
+async function updatePositionApi(
+  id: string,
+  payload: {
+    position: string;
+    dailyWage: number;
+    hourlyWage: number;
+    fieldAllowance: number;
+  }
+): Promise<PositionItem> {
+  const { data } = await api.patch<{ position?: PositionApiItem } & Partial<PositionApiItem>>(
+    `/position/${id}`,
+    payload
+  );
+  const raw = (data.position ?? data) as PositionApiItem;
+  return mapPositionApiItem(raw);
+}
+
+async function deletePositionApi(id: string): Promise<void> {
+  await api.delete(`/position/${id}`);
+}
+
+/* =========================================================================
+ * Loading the active tab
+ *
+ * `loadActiveTab()` is the single entry point that fetches whichever tab
+ * is active using the current page / rowsPerPage / search, then syncs
+ * `tablePagination.rowsNumber` from the server's `total` so q-table's
+ * built-in pagination footer reflects the real count instead of the
+ * (page-sized) array that was just loaded.
+ * ========================================================================= */
+
+async function loadActiveTab(): Promise<void> {
+  const params: FetchParams = {
+    page: tablePagination.value.page,
+    limit: tablePagination.value.rowsPerPage,
+    search: searchQuery.value.trim()
+  };
+
+  if (activeTab.value === "vehicle") {
+    await fetchVehicles(params);
+  } else if (activeTab.value === "labor") {
+    await fetchPositions(params);
+  } else {
+    await fetchMaterials(params);
+  }
+
+  tablePagination.value.rowsNumber = activeTotal.value;
+}
+
+// q-table's server-side pagination hook — fired on page change and
+// rows-per-page change.
+function onTableRequest(requestProp: {
+  pagination: { page: number; rowsPerPage: number };
+}): void {
+  tablePagination.value.page = requestProp.pagination.page;
+  tablePagination.value.rowsPerPage = requestProp.pagination.rowsPerPage;
+  void loadActiveTab();
+}
+
+// Debounced search (the q-input carries debounce="400") — reset to page 1
+// and refetch whenever the search term settles.
+watch(searchQuery, () => {
+  tablePagination.value.page = 1;
+  void loadActiveTab();
+});
+
+function switchTab(id: TabId): void {
+  activeTab.value = id;
+  searchQuery.value = "";
+  tablePagination.value.page = 1;
+  tablePagination.value.rowsNumber = 0;
+  // Vehicle and labor have no "unit" field/suggestions of their own.
+  unitInputOptions.value =
+    id === "vehicle" || id === "labor" ? [] : [...UNIT_SUGGESTIONS[id]];
+  void loadActiveTab();
+}
+
 onMounted(() => {
-  void fetchMaterials();
-  void fetchVehicles();
+  void loadActiveTab(); // loads the default tab (materials) only
 });
 
 onUnmounted(() => {
@@ -782,43 +1138,12 @@ onUnmounted(() => {
 });
 
 /* =========================================================================
- * Search filtering (scoped to the active tab)
- * ========================================================================= */
-
-const searchQuery = ref("");
-
-const hasActiveFilters = computed(() => searchQuery.value.trim().length > 0);
-
-const filteredItems = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase();
-  if (!q) return activeItems.value;
-
-  if (activeTab.value === "vehicle") {
-    return vehicleItems.value.filter(item => item.type.toLowerCase().includes(q));
-  }
-
-  return costData[activeTab.value as CostTabId].filter(
-    item =>
-      item.name.toLowerCase().includes(q) ||
-      item.code.toLowerCase().includes(q) ||
-      item.vendor.toLowerCase().includes(q)
-  );
-});
-
-function clearFilters(): void {
-  searchQuery.value = "";
-}
-
-/* =========================================================================
- * Table columns + pagination
+ * Table columns
  *
  * Columns power the q-table header only — every cell is rendered through
- * the custom `body` slot in the template (inline-editable unit/price,
- * action buttons), same as the reimbursement matrix. The same q-table now
- * renders on every screen size (see .cc-table-scroll), so its built-in
- * pagination footer is the only pager needed. `tablePagination` resets to
- * page 1 whenever the search or active tab changes so it never points
- * past the end of a newly-narrowed list.
+ * the custom `body` slot in the template. Search/pagination are now fully
+ * server-side (see loadActiveTab/onTableRequest above), so there's no
+ * client-side filtering left here.
  * ========================================================================= */
 
 const ccColumns = computed(() => {
@@ -848,6 +1173,32 @@ const ccColumns = computed(() => {
     ];
   }
 
+  if (activeTab.value === "labor") {
+    return [
+      { name: "no", label: "ลำดับ", field: "id", align: "left" as const },
+      { name: "position", label: "ตำแหน่ง", field: "position", align: "left" as const },
+      {
+        name: "dailyWage",
+        label: "ค่าแรงต่อวัน (บาท)",
+        field: "dailyWage",
+        align: "left" as const
+      },
+      {
+        name: "hourlyWage",
+        label: "ค่าแรงต่อชั่วโมง (บาท)",
+        field: "hourlyWage",
+        align: "left" as const
+      },
+      {
+        name: "fieldAllowance",
+        label: "ค่าตอบแทนออกพื้นที่ (บาท)",
+        field: "fieldAllowance",
+        align: "left" as const
+      },
+      { name: "actions", label: "การจัดการ", field: "id", align: "right" as const }
+    ];
+  }
+
   return [
     { name: "no", label: "ลำดับ", field: "id", align: "left" as const },
     { name: "code", label: "รหัสรายการ", field: "code", align: "left" as const },
@@ -869,37 +1220,8 @@ const ccColumns = computed(() => {
   ];
 });
 
-const tablePagination = ref({ page: 1, rowsPerPage: 10 });
-
-watch([searchQuery, activeTab], () => {
-  tablePagination.value.page = 1;
-});
-
-// FIX: deleting the last item on the last page (or shrinking rowsPerPage)
-// used to leave `tablePagination.page` pointing past the new last page,
-// showing a blank table/card list until the user manually paged back.
-// Clamp it whenever the filtered list size changes.
-watch(filteredItems, () => {
-  const maxPage = Math.max(
-    1,
-    Math.ceil(filteredItems.value.length / tablePagination.value.rowsPerPage)
-  );
-  if (tablePagination.value.page > maxPage) {
-    tablePagination.value.page = maxPage;
-  }
-});
-
 /* =========================================================================
- * Unit/price display
- *
- * The table and mobile card list used to let you edit unit/price inline
- * (a q-select + q-input right in the row). That's been replaced with
- * plain read-only text — use the "แก้ไข" button to open the dialog
- * instead. unitInputOptions/filterUnitOptions are still used there, for
- * the unit autocomplete field in the create/edit dialog.
- *
- * NOTE: for the materials tab, create (POST), update (PATCH), and delete
- * (DELETE) are all wired up to the /material API now.
+ * Unit/price display + formatting helpers
  * ========================================================================= */
 
 const unitInputOptions = ref<string[]>([...UNIT_SUGGESTIONS.materials]);
@@ -909,7 +1231,7 @@ function filterUnitOptions(
   update: (cb: () => void) => void
 ): void {
   update(() => {
-    if (activeTab.value === "vehicle") {
+    if (activeTab.value === "vehicle" || activeTab.value === "labor") {
       unitInputOptions.value = [];
       return;
     }
@@ -920,8 +1242,7 @@ function filterUnitOptions(
 }
 
 // Thousands separator + up to 2 decimals, e.g. 1234.5 -> "1,234.50".
-// Drops trailing zeros only when the value is a whole number (4 -> "4",
-// not "4.00"), which matches how the reference prices were entered.
+// Drops trailing zeros only when the value is a whole number.
 function formatPrice(value: number): string {
   const hasDecimals = value % 1 !== 0;
   return value.toLocaleString("en-US", {
@@ -936,15 +1257,6 @@ function saveCatalog(): void {
 
 /* =========================================================================
  * Create / edit dialog
- *
- * Materials/labor share the generic name/unit/price/vendor form (`form`
- * below). The dialog no longer collects a `code` for them — materials get
- * theirs from the backend on create; labor still gets one auto-assigned
- * locally (see nextItemCode below) since it doesn't have an API yet.
- *
- * Vehicle has its own form (`vehicleForm`) matching GET
- * {{baseURL}}/vehicle's shape (type/depreciationRate/fuelEfficiency/
- * avgFuelPrice) — see the `activeTab === 'vehicle'` template branch above.
  * ========================================================================= */
 
 interface ItemForm {
@@ -955,12 +1267,7 @@ interface ItemForm {
 }
 
 function emptyForm(): ItemForm {
-  return {
-    name: "",
-    unit: "",
-    price: null,
-    vendor: ""
-  };
+  return { name: "", unit: "", price: null, vendor: "" };
 }
 
 interface VehicleForm {
@@ -979,40 +1286,55 @@ function emptyVehicleForm(): VehicleForm {
   };
 }
 
-// Next sequential code (LAB-001, ...) based on the highest number
-// currently used within the active tab, so a new item never collides with
-// an existing one even after items have been removed. Only used for the
-// labor tab now — materials get their code from the API response on
-// create (see createMaterialApi above), and vehicle rows don't have a
-// `code` field at all.
-function nextItemCode(tabId: CostTabId): string {
-  const prefix = TABS.find(t => t.id === tabId)!.codePrefix;
-  const usedNumbers = costData[tabId]
-    .map(i => i.code.match(new RegExp(`^${prefix}-(\\d+)$`))?.[1])
-    .filter((n): n is string => !!n)
-    .map(n => parseInt(n, 10));
-  const highest = usedNumbers.length ? Math.max(...usedNumbers) : 0;
-  return `${prefix}-${String(highest + 1).padStart(3, "0")}`;
+interface PositionForm {
+  position: string;
+  dailyWage: number | null;
+  hourlyWage: number | null;
+  fieldAllowance: number | null;
+}
+
+function emptyPositionForm(): PositionForm {
+  return {
+    position: "",
+    dailyWage: null,
+    hourlyWage: null,
+    fieldAllowance: null
+  };
 }
 
 const dialogOpen = ref(false);
-const editingItem = ref<CostItem | VehicleItem | null>(null);
+const editingItem = ref<CostItem | VehicleItem | PositionItem | null>(null);
 const savingItem = ref(false);
 const form = reactive<ItemForm>(emptyForm());
 const vehicleForm = reactive<VehicleForm>(emptyVehicleForm());
+const positionForm = reactive<PositionForm>(emptyPositionForm());
+
+// `priceDisplay` is what the digit-only text input actually binds to
+// (see onPriceKeydown/onPricePaste above); it's kept in sync with
+// `form.price` (the number | null used for validation and the API
+// payload) in both directions so opening the edit dialog pre-fills it
+// and typing in it updates form.price for saveItem()/validation to use.
+const priceDisplay = ref("");
+
+watch(priceDisplay, val => {
+  form.price = val === "" ? null : Number(val);
+});
 
 function openCreateDialog(): void {
   editingItem.value = null;
   if (activeTab.value === "vehicle") {
     Object.assign(vehicleForm, emptyVehicleForm());
+  } else if (activeTab.value === "labor") {
+    Object.assign(positionForm, emptyPositionForm());
   } else {
     Object.assign(form, emptyForm());
+    priceDisplay.value = "";
     unitInputOptions.value = UNIT_SUGGESTIONS[activeTab.value as CostTabId];
   }
   dialogOpen.value = true;
 }
 
-function openEditDialog(item: CostItem | VehicleItem): void {
+function openEditDialog(item: CostItem | VehicleItem | PositionItem): void {
   editingItem.value = item;
   if (activeTab.value === "vehicle") {
     const vehicle = item as VehicleItem;
@@ -1022,6 +1344,14 @@ function openEditDialog(item: CostItem | VehicleItem): void {
       fuelEfficiency: vehicle.fuelEfficiency,
       avgFuelPrice: vehicle.avgFuelPrice
     });
+  } else if (activeTab.value === "labor") {
+    const positionItem = item as PositionItem;
+    Object.assign(positionForm, {
+      position: positionItem.position,
+      dailyWage: positionItem.dailyWage,
+      hourlyWage: positionItem.hourlyWage,
+      fieldAllowance: positionItem.fieldAllowance
+    });
   } else {
     const costItem = item as CostItem;
     Object.assign(form, {
@@ -1030,6 +1360,7 @@ function openEditDialog(item: CostItem | VehicleItem): void {
       price: costItem.price,
       vendor: costItem.vendor
     });
+    priceDisplay.value = String(costItem.price);
     unitInputOptions.value = UNIT_SUGGESTIONS[activeTab.value as CostTabId];
   }
   dialogOpen.value = true;
@@ -1073,38 +1404,131 @@ async function saveItem(): Promise<void> {
       return;
     }
 
-    // No POST/PATCH endpoint for vehicle yet — mutate vehicleItems
-    // locally, same as labor does for its own tab.
     if (editingItem.value) {
       const editing = editingItem.value as VehicleItem;
-      const target = vehicleItems.value.find(i => i.id === editing.id);
-      if (target) {
-        target.type = vehicleForm.type.trim();
-        target.depreciationRate = vehicleForm.depreciationRate;
-        target.fuelEfficiency = vehicleForm.fuelEfficiency;
-        target.avgFuelPrice = vehicleForm.avgFuelPrice;
+      savingItem.value = true;
+      try {
+        const updated = await updateVehicleApi(editing.id, {
+          type: vehicleForm.type.trim(),
+          depreciationRate: vehicleForm.depreciationRate,
+          fuelEfficiency: vehicleForm.fuelEfficiency,
+          avgFuelPrice: vehicleForm.avgFuelPrice
+        });
+        openNotify(true, `บันทึกการแก้ไข ${updated.type} สำเร็จ`);
+        dialogOpen.value = false;
+        await loadActiveTab();
+      } catch (err) {
+        console.error("แก้ไขรายการพาหนะไม่สำเร็จ", err);
+        openNotify(
+          false,
+          apiErrorMessage(err, "แก้ไขรายการพาหนะไม่สำเร็จ กรุณาลองใหม่อีกครั้ง")
+        );
+      } finally {
+        savingItem.value = false;
       }
-      openNotify(true, `บันทึกการแก้ไข ${target?.type ?? ""} สำเร็จ`);
-      dialogOpen.value = false;
       return;
     }
 
-    // FIX: Date.now() alone can collide if two items are added within the
-    // same millisecond — add a short random suffix so ids stay unique
-    // (same pattern used for labor below).
-    const id = `veh-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    vehicleItems.value.push({
-      id,
-      type: vehicleForm.type.trim(),
-      depreciationRate: vehicleForm.depreciationRate,
-      fuelEfficiency: vehicleForm.fuelEfficiency,
-      avgFuelPrice: vehicleForm.avgFuelPrice
-    });
-    openNotify(true, `เพิ่ม ${vehicleForm.type.trim()} สำเร็จ`);
-    dialogOpen.value = false;
+    savingItem.value = true;
+    try {
+      const created = await createVehicleApi({
+        type: vehicleForm.type.trim(),
+        depreciationRate: vehicleForm.depreciationRate,
+        fuelEfficiency: vehicleForm.fuelEfficiency,
+        avgFuelPrice: vehicleForm.avgFuelPrice
+      });
+      openNotify(true, `เพิ่ม ${created.type} สำเร็จ`);
+      dialogOpen.value = false;
+      // Jump to page 1 so the newly-created row is visible even if the
+      // user was deep in pagination when they created it.
+      tablePagination.value.page = 1;
+      await loadActiveTab();
+    } catch (err) {
+      console.error("เพิ่มรายการพาหนะไม่สำเร็จ", err);
+      openNotify(false, apiErrorMessage(err, "เพิ่มรายการพาหนะไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
+    } finally {
+      savingItem.value = false;
+    }
     return;
   }
 
+  if (tabId === "labor") {
+    if (!positionForm.position.trim()) {
+      openNotify(false, "กรุณากรอกตำแหน่ง");
+      return;
+    }
+    if (
+      positionForm.dailyWage === null ||
+      Number.isNaN(positionForm.dailyWage) ||
+      positionForm.dailyWage < 0
+    ) {
+      openNotify(false, "กรุณากรอกค่าแรงต่อวันให้ถูกต้อง");
+      return;
+    }
+    if (
+      positionForm.hourlyWage === null ||
+      Number.isNaN(positionForm.hourlyWage) ||
+      positionForm.hourlyWage < 0
+    ) {
+      openNotify(false, "กรุณากรอกค่าแรงต่อชั่วโมงให้ถูกต้อง");
+      return;
+    }
+    if (
+      positionForm.fieldAllowance === null ||
+      Number.isNaN(positionForm.fieldAllowance) ||
+      positionForm.fieldAllowance < 0
+    ) {
+      openNotify(false, "กรุณากรอกค่าตอบแทนออกพื้นที่ให้ถูกต้อง");
+      return;
+    }
+
+    if (editingItem.value) {
+      const editing = editingItem.value as PositionItem;
+      savingItem.value = true;
+      try {
+        const updated = await updatePositionApi(editing.id, {
+          position: positionForm.position.trim(),
+          dailyWage: positionForm.dailyWage,
+          hourlyWage: positionForm.hourlyWage,
+          fieldAllowance: positionForm.fieldAllowance
+        });
+        openNotify(true, `บันทึกการแก้ไข ${updated.position} สำเร็จ`);
+        dialogOpen.value = false;
+        await loadActiveTab();
+      } catch (err) {
+        console.error("แก้ไขรายการค่าแรงไม่สำเร็จ", err);
+        openNotify(
+          false,
+          apiErrorMessage(err, "แก้ไขรายการค่าแรงไม่สำเร็จ กรุณาลองใหม่อีกครั้ง")
+        );
+      } finally {
+        savingItem.value = false;
+      }
+      return;
+    }
+
+    savingItem.value = true;
+    try {
+      const created = await createPositionApi({
+        position: positionForm.position.trim(),
+        dailyWage: positionForm.dailyWage,
+        hourlyWage: positionForm.hourlyWage,
+        fieldAllowance: positionForm.fieldAllowance
+      });
+      openNotify(true, `เพิ่ม ${created.position} สำเร็จ`);
+      dialogOpen.value = false;
+      tablePagination.value.page = 1;
+      await loadActiveTab();
+    } catch (err) {
+      console.error("เพิ่มรายการค่าแรงไม่สำเร็จ", err);
+      openNotify(false, apiErrorMessage(err, "เพิ่มรายการค่าแรงไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
+    } finally {
+      savingItem.value = false;
+    }
+    return;
+  }
+
+  // tabId === "materials"
   if (!form.name.trim()) {
     openNotify(false, "กรุณากรอกชื่อรายการ");
     return;
@@ -1120,108 +1544,75 @@ async function saveItem(): Promise<void> {
 
   if (editingItem.value) {
     const editing = editingItem.value as CostItem;
-
-    if (tabId === "materials") {
-      // Materials edits go through PATCH {{baseURL}}/material/:id now.
-      savingItem.value = true;
-      try {
-        const updated = await updateMaterialApi(editing.id, {
-          name: form.name.trim(),
-          unit: form.unit.trim(),
-          price: form.price,
-          vendor: form.vendor.trim()
-        });
-        const index = costData.materials.findIndex(i => i.id === editing.id);
-        if (index !== -1) costData.materials[index] = updated;
-        openNotify(true, `บันทึกการแก้ไข ${updated.code} สำเร็จ`);
-        dialogOpen.value = false;
-      } catch (err) {
-        console.error("แก้ไขรายการวัสดุไม่สำเร็จ", err);
-        openNotify(false, apiErrorMessage(err, "แก้ไขรายการวัสดุไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
-      } finally {
-        savingItem.value = false;
-      }
-      return;
-    }
-
-    // labor: still local-only, no backend endpoint yet.
-    const target = costData.labor.find(i => i.id === editing.id);
-    if (target) {
-      target.name = form.name.trim();
-      target.unit = form.unit.trim();
-      target.price = form.price;
-      target.vendor = form.vendor.trim();
-    }
-    openNotify(true, `บันทึกการแก้ไข ${target?.code ?? ""} สำเร็จ`);
-    dialogOpen.value = false;
-    return;
-  }
-
-  if (tabId === "materials") {
     savingItem.value = true;
     try {
-      const created = await createMaterialApi({
+      const updated = await updateMaterialApi(editing.id, {
         name: form.name.trim(),
         unit: form.unit.trim(),
         price: form.price,
         vendor: form.vendor.trim()
       });
-      costData.materials.push(created);
-      openNotify(true, `เพิ่ม ${created.code} สำเร็จ`);
+      openNotify(true, `บันทึกการแก้ไข ${updated.code} สำเร็จ`);
       dialogOpen.value = false;
+      await loadActiveTab();
     } catch (err) {
-      console.error("เพิ่มรายการวัสดุไม่สำเร็จ", err);
-      openNotify(false, apiErrorMessage(err, "เพิ่มรายการวัสดุไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
+      console.error("แก้ไขรายการวัสดุไม่สำเร็จ", err);
+      openNotify(false, apiErrorMessage(err, "แก้ไขรายการวัสดุไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
     } finally {
       savingItem.value = false;
     }
     return;
   }
 
-  // labor: still local-only, no backend endpoint yet.
-  // FIX: Date.now() alone can collide if two items are added within the
-  // same millisecond (e.g. scripted/rapid submissions). Add a short
-  // random suffix so ids stay unique.
-  const id = `${tabId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const code = nextItemCode(tabId as CostTabId);
-  costData.labor.push({
-    id,
-    code,
-    name: form.name.trim(),
-    unit: form.unit.trim(),
-    price: form.price,
-    vendor: form.vendor.trim()
-  });
-  openNotify(true, `เพิ่ม ${code} สำเร็จ`);
-  dialogOpen.value = false;
+  savingItem.value = true;
+  try {
+    const created = await createMaterialApi({
+      name: form.name.trim(),
+      unit: form.unit.trim(),
+      price: form.price,
+      vendor: form.vendor.trim()
+    });
+    openNotify(true, `เพิ่ม ${created.code} สำเร็จ`);
+    dialogOpen.value = false;
+    tablePagination.value.page = 1;
+    await loadActiveTab();
+  } catch (err) {
+    console.error("เพิ่มรายการวัสดุไม่สำเร็จ", err);
+    openNotify(false, apiErrorMessage(err, "เพิ่มรายการวัสดุไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
+  } finally {
+    savingItem.value = false;
+  }
 }
 
 /* =========================================================================
  * Delete item
  *
- * Materials are deleted on the backend (DELETE {{baseURL}}/material/{:id})
- * via deleteMaterialApi(); labor and vehicle stay local-only since neither
- * has a delete endpoint yet. `deletingItem` gates the confirm dialog's
- * buttons so the user can't double-submit or dismiss mid-request.
+ * All three tabs delete on the backend: DELETE {{baseURL}}/material/{:id},
+ * DELETE {{baseURL}}/vehicle/{:id}, DELETE {{baseURL}}/position/{:id}.
+ * After a successful delete, if the deleted row was the last one on the
+ * current page (and it wasn't page 1), step back a page before refetching
+ * — otherwise the user would land on a page the server now considers
+ * empty.
  * ========================================================================= */
 
 const deleteDialogOpen = ref(false);
-const itemPendingDelete = ref<CostItem | VehicleItem | null>(null);
+const itemPendingDelete = ref<CostItem | VehicleItem | PositionItem | null>(null);
 const deletingItem = ref(false);
 
-// Label shown in the delete confirmation dialog — materials/labor show
-// "code — name"; vehicle rows have neither, so they show just the type.
 const deleteItemLabel = computed(() => {
   const item = itemPendingDelete.value;
   if (!item) return "";
   if (activeTab.value === "vehicle") {
     return (item as VehicleItem).type;
   }
+  if (activeTab.value === "labor") {
+    return (item as PositionItem).position;
+  }
   const costItem = item as CostItem;
   return `${costItem.code} — ${costItem.name}`;
 });
 
-function requestDelete(item: CostItem | VehicleItem): void {
+function requestDelete(item: CostItem | VehicleItem | PositionItem): void {
   itemPendingDelete.value = item;
   deleteDialogOpen.value = true;
 }
@@ -1230,6 +1621,13 @@ function cancelDelete(): void {
   if (deletingItem.value) return;
   deleteDialogOpen.value = false;
   itemPendingDelete.value = null;
+}
+
+function stepBackIfPageEmptied(): void {
+  const wasOnlyItemOnPage = activeItems.value.length === 1;
+  if (wasOnlyItemOnPage && tablePagination.value.page > 1) {
+    tablePagination.value.page -= 1;
+  }
 }
 
 async function confirmDelete(): Promise<void> {
@@ -1241,10 +1639,11 @@ async function confirmDelete(): Promise<void> {
     deletingItem.value = true;
     try {
       await deleteMaterialApi(id);
-      costData.materials = costData.materials.filter(i => i.id !== id);
       openNotify(true, `ลบ ${code} สำเร็จ`);
       deleteDialogOpen.value = false;
       itemPendingDelete.value = null;
+      stepBackIfPageEmptied();
+      await loadActiveTab();
     } catch (err) {
       console.error("ลบรายการวัสดุไม่สำเร็จ", err);
       openNotify(false, apiErrorMessage(err, "ลบรายการวัสดุไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
@@ -1255,21 +1654,40 @@ async function confirmDelete(): Promise<void> {
   }
 
   if (tabId === "vehicle") {
-    // No DELETE endpoint for vehicle yet — remove locally.
     const { id, type } = itemPendingDelete.value as VehicleItem;
-    vehicleItems.value = vehicleItems.value.filter(i => i.id !== id);
-    openNotify(true, `ลบ ${type} สำเร็จ`);
-    deleteDialogOpen.value = false;
-    itemPendingDelete.value = null;
+    deletingItem.value = true;
+    try {
+      await deleteVehicleApi(id);
+      openNotify(true, `ลบ ${type} สำเร็จ`);
+      deleteDialogOpen.value = false;
+      itemPendingDelete.value = null;
+      stepBackIfPageEmptied();
+      await loadActiveTab();
+    } catch (err) {
+      console.error("ลบรายการพาหนะไม่สำเร็จ", err);
+      openNotify(false, apiErrorMessage(err, "ลบรายการพาหนะไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
+    } finally {
+      deletingItem.value = false;
+    }
     return;
   }
 
-  // labor: still local-only, no backend endpoint yet.
-  const { id, code } = itemPendingDelete.value as CostItem;
-  costData.labor = costData.labor.filter(i => i.id !== id);
-  openNotify(true, `ลบ ${code} สำเร็จ`);
-  deleteDialogOpen.value = false;
-  itemPendingDelete.value = null;
+  // tabId === "labor"
+  const { id, position } = itemPendingDelete.value as PositionItem;
+  deletingItem.value = true;
+  try {
+    await deletePositionApi(id);
+    openNotify(true, `ลบ ${position} สำเร็จ`);
+    deleteDialogOpen.value = false;
+    itemPendingDelete.value = null;
+    stepBackIfPageEmptied();
+    await loadActiveTab();
+  } catch (err) {
+    console.error("ลบรายการค่าแรงไม่สำเร็จ", err);
+    openNotify(false, apiErrorMessage(err, "ลบรายการค่าแรงไม่สำเร็จ กรุณาลองใหม่อีกครั้ง"));
+  } finally {
+    deletingItem.value = false;
+  }
 }
 </script>
 
@@ -1288,10 +1706,7 @@ async function confirmDelete(): Promise<void> {
   gap: 16px;
 }
 
-/* ===== Header (light) =====
-   Matches the light header card style used elsewhere in the app (white
-   background, light-blue icon box, dark title, green-when-active toggle
-   buttons) instead of the previous dark navy gradient. */
+/* ===== Header (light) ===== */
 .cc-header-card {
   background: #ffffff;
   border: 1px solid #e6e9ee;
@@ -1371,10 +1786,7 @@ async function confirmDelete(): Promise<void> {
   border-color: #17a865;
 }
 
-/* ===== Catalog header card =====
-   Light card above the table — icon + title (green, matching the brand
-   accent) + subtitle (blue, matching the reimbursement matrix's sub-line
-   style elsewhere) + item count + per-tab add/save buttons. */
+/* ===== Catalog header card ===== */
 .cc-catalog-card {
   background: #ffffff;
   border: 1px solid #e6e9ee;
@@ -1385,8 +1797,6 @@ async function confirmDelete(): Promise<void> {
   gap: 10px;
 }
 
-/* Single header row — icon + title on the left, count + actions on the
-   right — matching the reference tracking table's header row. */
 .cc-catalog-header-row {
   display: flex;
   align-items: center;
@@ -1445,8 +1855,6 @@ async function confirmDelete(): Promise<void> {
   white-space: nowrap;
 }
 
-/* Primary CTA — solid blue button, matching the reference table's
-   "+ เพิ่ม..." button. This is the dominant action in the header. */
 .cc-primary-btn {
   background: #2f6feb;
   color: #ffffff;
@@ -1456,8 +1864,6 @@ async function confirmDelete(): Promise<void> {
   padding: 0 16px;
 }
 
-/* Secondary action — plain text button, demoted so the primary button
-   stays the single visual focal point like the reference header. */
 .cc-secondary-btn {
   font-size: 0.78rem;
   font-weight: 600;
@@ -1465,10 +1871,7 @@ async function confirmDelete(): Promise<void> {
   padding: 0 8px;
 }
 
-/* ===== Search + filter row =====
-   No nested card/border — fields sit directly inside the catalog card,
-   labeled above each input, matching the reference tracking table's
-   filter-row layout exactly. */
+/* ===== Search + filter row ===== */
 .cc-filter-row {
   display: flex;
   align-items: flex-end;
@@ -1519,10 +1922,7 @@ async function confirmDelete(): Promise<void> {
   color: #8a94a3;
 }
 
-/* ===== Desktop / tablet table (row-mode q-table) =====
-   Light theme, matching the header/catalog cards above (previously this
-   was a dark navy gradient to match a dark header — now that the header
-   is light, the table follows suit so the whole page reads consistently). */
+/* ===== Desktop / tablet table (row-mode q-table) ===== */
 .cc-qtable {
   background: #ffffff;
   margin-top: 6px;
@@ -1575,8 +1975,6 @@ async function confirmDelete(): Promise<void> {
   white-space: nowrap;
 }
 
-/* Plain bold blue text (no chip background), matching the reference
-   table's clickable-looking code column. */
 .cc-code-text {
   font-size: 0.82rem;
   font-weight: 700;
@@ -1589,10 +1987,6 @@ async function confirmDelete(): Promise<void> {
   color: #374151;
 }
 
-/* Bordered "input-style" box around the reference price, matching the
-   reimbursement matrix's boxed price fields (white background, light
-   gray border, rounded corners) instead of plain colored text. Used in
-   both the desktop table and the mobile card list. */
 .cc-price-box {
   display: inline-flex;
   align-items: center;
@@ -1620,11 +2014,7 @@ async function confirmDelete(): Promise<void> {
   color: #dc2626;
 }
 
-/* ===== Table horizontal scroll wrapper =====
-   The real q-table now renders on every screen size instead of swapping
-   to stacked cards on mobile. On narrow viewports the table is wider
-   than the screen, so this wrapper lets it scroll sideways (like the
-   reference layout) rather than wrapping/collapsing awkwardly. */
+/* ===== Table horizontal scroll wrapper ===== */
 .cc-table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -1824,10 +2214,6 @@ async function confirmDelete(): Promise<void> {
     margin-bottom: 0;
   }
 
-  /* The table stays a real table on mobile now (no more card swap) —
-     .cc-table-scroll handles the sideways scroll. Just tighten up the
-     row height/columns a little so more fits on screen before scrolling
-     kicks in, matching the reference layout's compact table. */
   .cc-qtable :deep(th),
   .cc-qtable :deep(td) {
     padding: 8px 10px;

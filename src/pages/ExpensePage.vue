@@ -25,9 +25,16 @@
           <div class="chart-subtitle">ยอดที่ได้รับแล้ว เทียบกับยอดค้างเบิกจ่าย</div>
 
           <div class="donut-wrap">
-            <div class="donut" :style="{ background: donutGradient }">
+            <div
+              ref="donutRef"
+              class="donut"
+              :style="{ background: donutGradient }"
+              @mousemove="onDonutPointer($event)"
+              @mouseleave="onDonutLeave"
+              @touchstart.passive="onDonutPointer($event)"
+            >
               <div class="donut-hole">
-                <span class="donut-hole-value">{{ receivedPercent }}%</span>
+                <span class="donut-hole-value">{{ animatedReceivedPercent }}%</span>
                 <span class="donut-hole-label">ได้รับแล้ว</span>
               </div>
             </div>
@@ -54,7 +61,13 @@
                 <span class="dot" :style="{ background: b.color }" />
                 {{ b.label }}
               </div>
-              <div class="bucket-bar-track">
+              <div
+                class="bucket-bar-track"
+                @mouseenter="onBucketHover($event, b)"
+                @mousemove="moveTooltip($event)"
+                @mouseleave="hideTooltip"
+                @touchstart.passive="onBucketHover($event, b)"
+              >
                 <div class="bucket-bar-fill" :style="{ width: `${b.percent}%`, background: b.color }" />
               </div>
               <div class="bucket-value">
@@ -125,7 +138,7 @@
             <span>ตารางติดตามสถานะการรับเงินและส่งเคลมเบิกจ่ายทุกรอบการออกหน่วย</span>
           </div>
           <div class="table-header-actions">
-            <span class="table-count">{{ periodClaims.length }} รายการ</span>
+            <span class="table-count">{{ pagination.rowsNumber }} รายการ</span>
             <q-btn
               unelevated
               no-caps
@@ -150,7 +163,8 @@
 
         <!-- Each field filters independently (AND'd together) and is sent
              to the API so the server does the actual filtering; the table
-             below simply renders whatever comes back. -->
+             below simply renders whatever comes back for the current
+             page/limit. -->
         <div class="filter-row">
           <div class="filter-field">
             <label class="status-label">งานออกหน่วย</label>
@@ -188,10 +202,11 @@
             row-key="id"
             v-model:pagination="pagination"
             :loading="isLoadingClaims"
-            :rows-per-page-options="[10, 20, 50]"
+            :rows-per-page-options="[5, 10, 20, 50]"
             binary-state-sort
             :grid="isMobile"
             class="claims-table"
+            @request="onTableRequest"
           >
             <template v-slot:loading>
               <q-inner-loading showing color="primary" />
@@ -199,7 +214,7 @@
 
             <template #body-cell-index="props">
               <q-td :props="props">
-                <span class="row-index">{{ rowNumber(props.rowIndex) }}</span>
+                <span class="row-index">{{ props.row.displayIndex }}</span>
               </q-td>
             </template>
 
@@ -268,7 +283,7 @@
               <div class="mobile-card">
                 <div class="mobile-row">
                   <span class="mobile-label">ลำดับ</span>
-                  <span class="row-index">{{ rowNumber(props.rowIndex) }}</span>
+                  <span class="row-index">{{ props.row.displayIndex }}</span>
                 </div>
                 <div class="mobile-row">
                   <span class="mobile-label">รหัส</span>
@@ -350,7 +365,7 @@
           </button>
         </div>
 
-        <q-form @submit="submitStatusDialog">
+        <q-form ref="statusFormRef" @submit="submitStatusDialog">
           <div class="dialog-body">
             <div class="status-field">
               <label class="status-label">งานออกหน่วย</label>
@@ -390,11 +405,31 @@
             </div>
             <div class="status-field">
               <label class="status-label">วันที่ออกหน่วย</label>
-              <q-input v-model="statusDialog.deployDate" type="date" dense outlined class="status-input" />
+              <q-input
+                v-model="statusDialog.deployDate"
+                type="date"
+                dense
+                outlined
+                class="status-input"
+                @update:model-value="onStatusDeployDateChange"
+              />
             </div>
             <div class="status-field">
               <label class="status-label">วันที่ส่งเรื่องเบิกจ่าย (Claim Date)</label>
-              <q-input v-model="statusDialog.claimDate" type="date" dense outlined class="status-input" />
+              <q-input
+                v-model="statusDialog.claimDate"
+                type="date"
+                dense
+                outlined
+                class="status-input"
+                :min="statusDialog.deployDate || undefined"
+                @update:model-value="onStatusClaimDateChange"
+                :rules="[
+                  (val) =>
+                    isClaimDateAfterDeploy(statusDialog.deployDate, val) ||
+                    'วันที่ส่งตั้งเบิกต้องมากกว่าวันที่ออกหน่วย',
+                ]"
+              />
             </div>
             <div class="status-field">
               <label class="status-label">จำนวนเงินที่ส่งเคลมตั้งเบิก (บาท)</label>
@@ -406,7 +441,7 @@
             </div>
             <div class="status-field">
               <label class="status-label">วันที่ได้รับเงินโอนเข้าบัญชีโรงพยาบาล</label>
-              <q-input v-model="statusDialog.receivedDate" type="date" dense outlined class="status-input" />
+              <q-input v-model="statusDialog.receivedDate" type="date" dense outlined class="status-input" :min="statusDialog.claimDate || undefined" />
             </div>
             <div class="status-field">
               <label class="status-label">สถานะเบิกจ่าย</label>
@@ -454,7 +489,7 @@
           </button>
         </div>
 
-        <q-form @submit="submitAddDialog">
+        <q-form ref="addFormRef" @submit="submitAddDialog">
           <div class="dialog-body">
             <div class="status-field">
               <label class="status-label">งานออกหน่วย</label>
@@ -497,11 +532,31 @@
             </div>
             <div class="status-field">
               <label class="status-label">วันที่ออกหน่วย</label>
-              <q-input v-model="addDialog.deployDate" type="date" dense outlined class="status-input" />
+              <q-input
+                v-model="addDialog.deployDate"
+                type="date"
+                dense
+                outlined
+                class="status-input"
+                @update:model-value="onAddDeployDateChange"
+              />
             </div>
             <div class="status-field">
               <label class="status-label">วันที่ส่งเรื่องเบิกจ่าย (Claim Date)</label>
-              <q-input v-model="addDialog.claimDate" type="date" dense outlined class="status-input" />
+              <q-input
+                v-model="addDialog.claimDate"
+                type="date"
+                dense
+                outlined
+                class="status-input"
+                :min="addDialog.deployDate || undefined"
+                @update:model-value="onAddClaimDateChange"
+                :rules="[
+                  (val) =>
+                    isClaimDateAfterDeploy(addDialog.deployDate, val) ||
+                    'วันที่ส่งตั้งเบิกต้องมากกว่าวันที่ออกหน่วย',
+                ]"
+              />
             </div>
             <div class="status-field">
               <label class="status-label">จำนวนเงินที่ส่งเคลมตั้งเบิก (บาท)</label>
@@ -513,7 +568,7 @@
             </div>
             <div class="status-field">
               <label class="status-label">วันที่ได้รับเงินโอนเข้าบัญชีโรงพยาบาล</label>
-              <q-input v-model="addDialog.receivedDate" type="date" dense outlined class="status-input" />
+              <q-input v-model="addDialog.receivedDate" type="date" dense outlined class="status-input" :min="addDialog.claimDate || undefined" />
             </div>
             <div class="status-field">
               <label class="status-label">สถานะเบิกจ่าย</label>
@@ -605,12 +660,24 @@
         />
       </div>
     </q-dialog>
+
+    <!-- ===== SHARED HOVER/TOUCH TOOLTIP (donut + overdue buckets) ===== -->
+    <div
+      v-if="tooltip.visible"
+      class="chart-tooltip"
+      :style="{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }"
+    >
+      <div class="chart-tooltip-title">{{ tooltip.title }}</div>
+      <div v-for="(line, i) in tooltip.lines" :key="i" class="chart-tooltip-line">
+        {{ line }}
+      </div>
+    </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
-import { useQuasar } from 'quasar';
+import { useQuasar, type QForm } from 'quasar';
 import * as XLSX from 'xlsx';
 import { api } from '@/boot/axios';
 import type { AxiosError } from 'axios';
@@ -635,6 +702,7 @@ type ClaimStatus =
   | 'ล่าช้า <3 เดือน';
 
 interface ClaimRecord {
+  displayIndex: number;
   id: number;
   code: string;
   title: string;
@@ -770,19 +838,31 @@ function toDisplayDate(isoDate: string): string {
   return `${d}/${m}/${y}`;
 }
 
+// Both dialog date fields are bound to <q-input type="date">, which always
+// stores/emits a plain YYYY-MM-DD string. That format sorts correctly as
+// plain text, so a lexicographic comparison is enough — no need to parse
+// either value into a Date (and no timezone edge cases to worry about).
+// Returns true (i.e. "no violation") whenever either date is still empty,
+// so this rule doesn't fight with separate required-field rules — it only
+// engages once both dates are actually filled in.
+function isClaimDateAfterDeploy(deployDateIso: string, claimDateIso: string): boolean {
+  if (!deployDateIso || !claimDateIso) return true;
+  return claimDateIso > deployDateIso;
+}
+
 function statusMeta(status: string): { bg: string; color: string } {
   return STATUS_BADGE_COLOR[status as ClaimStatus] ?? STATUS_BADGE_FALLBACK;
 }
 
-function rowNumber(rowIndex: number): number {
-  return (pagination.value.page - 1) * pagination.value.rowsPerPage + rowIndex + 1;
-}
+// function rowNumber(rowIndex: number): number {
+//   return (pagination.value.page - 1) * pagination.value.rowsPerPage + rowIndex + 1;
+// }
 
 // Maps one row from GET /expenses into a ClaimRecord. The API uses
 // all-lowercase field names (orgname, deploydate, claimamount, ...) while
 // the rest of the app works in camelCase, so this is the single place that
 // bridges the two.
-function mapApiRecordToClaim(raw: Record<string, any>): ClaimRecord {
+function mapApiRecordToClaim(raw: Record<string, any>, displayIndex: number): ClaimRecord {
   const claimDate = formatDate(raw.claimdate);
   const submitted = Boolean(claimDate);
   const claimAmount = Number(raw.claimamount ?? 0);
@@ -795,6 +875,7 @@ function mapApiRecordToClaim(raw: Record<string, any>): ClaimRecord {
   }
 
   return {
+    displayIndex,
     id: Number(raw.id),
     code: raw.code ?? '',
     title: raw.title ?? '',
@@ -823,6 +904,169 @@ function extractList(payload: unknown, nestedKey: string): unknown[] {
   return data?.data ?? data?.[nestedKey]?.data ?? [];
 }
 
+// Reads the server-reported total count from a paginated response, trying
+// the same top-level/nested shapes extractList() checks. Falls back to the
+// loaded rows' length so the table still shows a sane count if the API
+// ever omits `total` (e.g. an older un-paginated response).
+function extractTotal(payload: unknown, nestedKey: string, fallbackLength: number): number {
+  const data = payload as Record<string, any> | undefined;
+  const total = data?.total ?? data?.[nestedKey]?.total;
+  return typeof total === 'number' ? total : fallbackLength;
+}
+
+/* =========================================================================
+ * Shared draw-in animation (KPI counters, donut sweep, bucket bar growth)
+ *
+ * `chartProgress` drives shape-based animations (donut conic-gradient
+ * sweep, overdue-bucket bar widths); `animatedNumbers` drives every
+ * count-up number (the three KPI values + the donut center percentage).
+ * Both run off a single shared rAF loop so everything on the page flows
+ * in together instead of pieces animating at different paces.
+ * ========================================================================= */
+
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+const chartProgress = ref(0);
+/** [totalClaimed, totalReceived, totalPending, receivedPercent] */
+const animatedNumbers = ref<number[]>([0, 0, 0, 0]);
+let dashAnimFrame: number | null = null;
+
+function animateDashboard(targets: number[]): void {
+  if (dashAnimFrame !== null) cancelAnimationFrame(dashAnimFrame);
+  const startValues = targets.map((_, i) => animatedNumbers.value[i] ?? 0);
+  const startTime = performance.now();
+  const duration = 700; // ms
+
+  function step(now: number): void {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed / duration, 1);
+    const eased = easeOutCubic(t);
+    chartProgress.value = eased;
+    animatedNumbers.value = targets.map(
+      (target, i) => (startValues[i] ?? 0) + (target - (startValues[i] ?? 0)) * eased,
+    );
+    if (t < 1) {
+      dashAnimFrame = requestAnimationFrame(step);
+    } else {
+      dashAnimFrame = null;
+    }
+  }
+
+  chartProgress.value = 0;
+  dashAnimFrame = requestAnimationFrame(step);
+}
+
+/* =========================================================================
+ * Shared hover/touch tooltip (donut + overdue-bucket bars)
+ *
+ * Works with both mouse (hover) and touch (tap) events, since this chart
+ * has no built-in hover on mobile. A document-level touchstart listener
+ * (registered in onMounted below) hides the tooltip once the person taps
+ * anywhere that isn't a donut ring or bucket bar.
+ * ========================================================================= */
+
+interface TooltipState {
+  visible: boolean;
+  x: number;
+  y: number;
+  title: string;
+  lines: string[];
+}
+
+const tooltip = ref<TooltipState>({
+  visible: false,
+  x: 0,
+  y: 0,
+  title: '',
+  lines: [],
+});
+
+function isTouchEvent(event: MouseEvent | TouchEvent): event is TouchEvent {
+  return 'touches' in event;
+}
+
+function getEventPoint(event: MouseEvent | TouchEvent): { x: number; y: number } {
+  if (isTouchEvent(event)) {
+    const touch = event.touches[0] ?? event.changedTouches[0];
+    return { x: touch?.clientX ?? 0, y: touch?.clientY ?? 0 };
+  }
+  return { x: event.clientX, y: event.clientY };
+}
+
+function showTooltip(event: MouseEvent | TouchEvent, title: string, lines: string[]): void {
+  const { x, y } = getEventPoint(event);
+  tooltip.value = { visible: true, x, y, title, lines };
+}
+
+function moveTooltip(event: MouseEvent | TouchEvent): void {
+  if (!tooltip.value.visible) return;
+  const { x, y } = getEventPoint(event);
+  tooltip.value.x = x;
+  tooltip.value.y = y;
+}
+
+function hideTooltip(): void {
+  tooltip.value.visible = false;
+}
+
+function handleOutsideTap(event: TouchEvent): void {
+  const target = event.target as HTMLElement | null;
+  if (!target || !target.closest('.donut, .bucket-bar-track')) {
+    hideTooltip();
+  }
+}
+
+// ─── Donut hover/touch (angle-based hit test) ────────────────────────────────
+// The donut is a single conic-gradient div rather than discrete SVG slices,
+// so "which slice is the pointer over" has to be worked out from the angle
+// between the pointer and the donut's center — same clockwise-from-12
+// convention the conic-gradient itself uses.
+const donutRef = ref<HTMLElement | null>(null);
+
+function angleFromEvent(event: MouseEvent | TouchEvent): number | null {
+  const el = donutRef.value;
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const { x, y } = getEventPoint(event);
+  let angle = (Math.atan2(y - cy, x - cx) * 180) / Math.PI + 90;
+  if (angle < 0) angle += 360;
+  return angle;
+}
+
+function onDonutPointer(event: MouseEvent | TouchEvent): void {
+  const angle = angleFromEvent(event);
+  if (angle === null) return;
+
+  const items = donutSlices.value;
+  const total = items.reduce((sum, d) => sum + d.value, 0) || 1;
+  let cursor = 0;
+
+  for (const d of items) {
+    const start = (cursor / total) * 360;
+    cursor += d.value;
+    const end = (cursor / total) * 360;
+    if (angle >= start && angle < end) {
+      const percent = total ? (d.value / total) * 100 : 0;
+      showTooltip(event, d.label, [`${fmtBaht(d.value)} (${percent.toFixed(1)}%)`]);
+      return;
+    }
+  }
+  hideTooltip();
+}
+
+function onDonutLeave(): void {
+  hideTooltip();
+}
+
+// ─── Overdue bucket hover/touch ──────────────────────────────────────────────
+function onBucketHover(event: MouseEvent | TouchEvent, b: Bucket): void {
+  showTooltip(event, b.label, [fmtBaht(b.amount), `${b.count} รอบ`]);
+}
+
 // ─── Notify Dialog ────────────────────────────────────────────────────────────
 const showNotifyDialog = ref(false);
 const notifySuccess = ref(true);
@@ -841,7 +1085,7 @@ const openNotify = (success: boolean, message: string) => {
   }, NOTIFY_DURATION);
 };
 
-// ─── Data Fetching: Claims ────────────────────────────────────────────────────
+// ─── Data Fetching: Claims (server-side page / limit / search) ─────────────
 const CLAIM_RECORDS = ref<ClaimRecord[]>([]);
 const isLoadingClaims = ref(false);
 
@@ -850,23 +1094,42 @@ const fetchExpense = async (): Promise<void> => {
   try {
     const response = await api.get('/expenses', {
       params: {
+        page: pagination.value.page,
+        limit: pagination.value.rowsPerPage,
         title: titleQuery.value.trim() || undefined,
         orgname: orgQuery.value.trim() || undefined,
         deploydate: deployDateQuery.value.trim() || undefined,
         statusId: statusId.value ?? undefined,
       },
     });
-    CLAIM_RECORDS.value = extractList(response.data, 'expenses').map((row) =>
-      mapApiRecordToClaim(row as Record<string, any>),
+    const startIndex = (pagination.value.page - 1) * pagination.value.rowsPerPage;
+    const rows = extractList(response.data, 'expenses').map((row, index) =>
+      mapApiRecordToClaim(row as Record<string, any>, startIndex + index + 1),
     );
+    CLAIM_RECORDS.value = rows;
+    pagination.value.rowsNumber = extractTotal(response.data, 'expenses', rows.length);
   } catch (err: unknown) {
     const error = err as AxiosError<{ message: string }>;
     CLAIM_RECORDS.value = [];
+    pagination.value.rowsNumber = 0;
     openNotify(false, error.response?.data?.message ?? 'โหลดข้อมูลการเบิกจ่ายไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
   } finally {
     isLoadingClaims.value = false;
-    pagination.value.page = 1;
   }
+};
+
+// q-table's server-side pagination/sort hook — fired on page change and
+// rows-per-page change (sort is bound via binary-state-sort but filtering/
+// sorting itself still happens client-side on the currently-loaded page,
+// same as before; only page/limit are now server-driven).
+const onTableRequest = (requestProp: {
+  pagination: { page: number; rowsPerPage: number; sortBy: string | null; descending: boolean };
+}): void => {
+  pagination.value.page = requestProp.pagination.page;
+  pagination.value.rowsPerPage = requestProp.pagination.rowsPerPage;
+  pagination.value.sortBy = requestProp.pagination.sortBy;
+  pagination.value.descending = requestProp.pagination.descending;
+  void fetchExpense();
 };
 
 // ─── Data Fetching: Status Options ───────────────────────────────────────────
@@ -927,15 +1190,19 @@ const benefitSelectOptions = computed<BenefitOption[]>(() =>
   benefitOptions.value.length ? benefitOptions.value : BENEFIT_OPTIONS.map((name, i) => ({ id: i, name })),
 );
 
-// ─── Claims (filtered by the API, rendered as-is) ────────────────────────────
+// ─── Claims (filtered + paginated by the API, rendered as-is) ───────────────
 const periodClaims = computed<ClaimRecord[]>(() => CLAIM_RECORDS.value);
 
 // ─── Table ────────────────────────────────────────────────────────────────────
+// `rowsNumber` is filled in from the API's `total` in fetchExpense() so
+// q-table's built-in pagination footer reflects the server's true count
+// instead of counting the (page-sized) array currently in memory.
 const pagination = ref({
   sortBy: null as string | null,
   descending: false,
   page: 1,
   rowsPerPage: 10,
+  rowsNumber: 0,
 });
 
 const tableColumns = [
@@ -977,6 +1244,11 @@ const tableColumns = [
 ];
 
 // ─── KPI & Chart Computeds ────────────────────────────────────────────────────
+// NOTE: these are computed from `periodClaims` — the currently-loaded page
+// only, now that the table is server-paginated. If the dashboard cards
+// should reflect the *entire* filtered result set rather than just the
+// visible page, they need their own summary endpoint (or a separate
+// unpaginated fetch) instead of being derived from `CLAIM_RECORDS`.
 const totalClaimed = computed(() =>
   periodClaims.value.filter((c) => c.submitted).reduce((sum, c) => sum + c.claimAmount, 0),
 );
@@ -988,21 +1260,34 @@ const receivedPercent = computed(() =>
   totalClaimed.value ? Math.round((totalReceived.value / totalClaimed.value) * 100) : 0,
 );
 
+// Replays the count-up + draw-in animation every time the underlying
+// totals change — on first load, and again whenever fetchExpense() brings
+// back a new page/filter result.
+watch(
+  [totalClaimed, totalReceived, totalPending, receivedPercent],
+  () => animateDashboard([totalClaimed.value, totalReceived.value, totalPending.value, receivedPercent.value]),
+  { immediate: true },
+);
+
+// The donut's center label counts up alongside the KPI cards, driven by
+// the same animatedNumbers array (index 3 = receivedPercent).
+const animatedReceivedPercent = computed(() => Math.round(animatedNumbers.value[3] ?? 0));
+
 const lateCount = computed(() => periodClaims.value.filter((c) => c.status === 'ล่าช้า <3 เดือน').length);
 const unpaidCount = computed(() => periodClaims.value.filter((c) => c.status === 'ยังไม่ชำระเงิน').length);
 
 const kpis = computed<Kpi[]>(() => [
   {
     title: 'ยอดเงินส่งเคลมตั้งเบิกทั้งหมด',
-    value: fmtBaht(totalClaimed.value),
-    sub: `จากการออกหน่วยทั้งหมด ${periodClaims.value.length} รอบ`,
+    value: fmtBaht(animatedNumbers.value[0] ?? 0),
+    sub: `จากการออกหน่วยทั้งหมด ${pagination.value.rowsNumber} รอบ`,
     icon: 'send',
     iconBg: '#e6f0fb',
     iconColor: COLORS.revenue,
   },
   {
     title: 'ยอดเงินที่ได้รับโอนแล้ว (Received)',
-    value: fmtBaht(totalReceived.value),
+    value: fmtBaht(animatedNumbers.value[1] ?? 0),
     valueColor: COLORS.profit,
     sub: `${receivedPercent.value}% ของยอดส่งเคลม`,
     icon: 'task_alt',
@@ -1011,7 +1296,7 @@ const kpis = computed<Kpi[]>(() => [
   },
   {
     title: 'ยอดเงินค้างชำระรอเบิกจ่าย (Pending)',
-    value: fmtBaht(totalPending.value),
+    value: fmtBaht(animatedNumbers.value[2] ?? 0),
     valueColor: COLORS.warning,
     sub: `ล่าช้า <3 เดือน (${lateCount.value} รอบ) • ยังไม่ชำระเงิน (${unpaidCount.value} รอบ)`,
     icon: 'hourglass_bottom',
@@ -1025,16 +1310,33 @@ const donutSlices = computed(() => [
   { label: 'ค้างชำระ', value: totalPending.value, color: COLORS.warning },
 ]);
 
+// Sweeps the donut in clockwise as chartProgress climbs 0 -> 1, filling
+// the not-yet-revealed remainder with a neutral gray track color instead
+// of jumping straight to the final split.
 const donutGradient = computed(() => {
   const items = donutSlices.value;
   const total = items.reduce((sum, d) => sum + d.value, 0) || 1;
+  const revealed = total * chartProgress.value;
   let cursor = 0;
-  const stops = items.map((d) => {
-    const start = (cursor / total) * 360;
+  const stops: string[] = [];
+
+  items.forEach((d) => {
+    const cursorBefore = cursor;
     cursor += d.value;
-    const end = (cursor / total) * 360;
-    return `${d.color} ${start}deg ${end}deg`;
+    const cursorAfter = cursor;
+    const visibleCursorAfter = Math.min(cursorAfter, revealed);
+    if (visibleCursorAfter > cursorBefore) {
+      const start = (cursorBefore / total) * 360;
+      const end = (visibleCursorAfter / total) * 360;
+      stops.push(`${d.color} ${start}deg ${end}deg`);
+    }
   });
+
+  const revealedEndDeg = (Math.min(revealed, total) / total) * 360;
+  if (revealedEndDeg < 360) {
+    stops.push(`#eef0f3 ${revealedEndDeg}deg 360deg`);
+  }
+
   return `conic-gradient(${stops.join(', ')})`;
 });
 
@@ -1052,12 +1354,15 @@ const overdueBuckets = computed<Bucket[]>(() => {
 
   return BUCKET_ORDER.filter((status) => totals.has(status)).map((status) => {
     const t = totals.get(status)!;
+    // Bar width grows in with chartProgress instead of appearing at full
+    // length instantly.
+    const fullPercent = (t.amount / maxAmount) * 100;
     return {
       label: status,
       color: BUCKET_COLOR[status],
       amount: t.amount,
       count: t.count,
-      percent: Math.round((t.amount / maxAmount) * 100),
+      percent: Math.round(fullPercent * chartProgress.value),
     };
   });
 });
@@ -1096,6 +1401,32 @@ const statusDialog = reactive<StatusDialogState>({
   note: '',
 });
 const savingRowId = ref<string | null>(null);
+const statusFormRef = ref<QForm | null>(null);
+
+// If the newly-picked deploy date lands on/after the already-filled claim
+// date, that claim date (and the received date that was chained off it)
+// are no longer valid — clear both instead of leaving stale invalid
+// values sitting in the fields for the person to notice via the error
+// message. Re-validates afterward either way, so a user who edits
+// deployDate *after* claimDate was already filled in sees the fields
+// react immediately instead of only on submit.
+const onStatusDeployDateChange = (): void => {
+  if (statusDialog.claimDate && !isClaimDateAfterDeploy(statusDialog.deployDate, statusDialog.claimDate)) {
+    statusDialog.claimDate = '';
+    statusDialog.receivedDate = '';
+  }
+  void statusFormRef.value?.validate();
+};
+
+// Same cascade one level down: if claimDate itself just changed and the
+// already-filled receivedDate now falls on/before it, that receivedDate
+// is no longer valid either.
+const onStatusClaimDateChange = (): void => {
+  if (statusDialog.receivedDate && !isClaimDateAfterDeploy(statusDialog.claimDate, statusDialog.receivedDate)) {
+    statusDialog.receivedDate = '';
+  }
+  void statusFormRef.value?.validate();
+};
 
 const saveClaimStatus = (row: ClaimRecord): void => {
   statusDialog.id = String(row.id);
@@ -1123,6 +1454,12 @@ const submitStatusDialog = async (): Promise<void> => {
   }
   if (statusDialog.benefitId === null) {
     openNotify(false, 'กรุณาเลือกสิทธิ์การรักษาก่อนบันทึก');
+    return;
+  }
+  // Defense in depth: the q-input `:rules` already block submit via q-form,
+  // but this guards direct calls to submitStatusDialog() too.
+  if (!isClaimDateAfterDeploy(statusDialog.deployDate, statusDialog.claimDate)) {
+    openNotify(false, 'วันที่ส่งตั้งเบิกต้องมากกว่าวันที่ออกหน่วย');
     return;
   }
 
@@ -1187,6 +1524,27 @@ const addDialog = reactive<AddDialogState>({
   note: '',
 });
 const isAddingClaim = ref(false);
+const addFormRef = ref<QForm | null>(null);
+
+// Same cascade as the status dialog: clears an already-filled claim date
+// (and the received date chained off it) that the new deploy date has
+// made invalid, then re-validates.
+const onAddDeployDateChange = (): void => {
+  if (addDialog.claimDate && !isClaimDateAfterDeploy(addDialog.deployDate, addDialog.claimDate)) {
+    addDialog.claimDate = '';
+    addDialog.receivedDate = '';
+  }
+  void addFormRef.value?.validate();
+};
+
+// Same one-level-down cascade: if claimDate itself just changed and the
+// already-filled receivedDate now falls on/before it, clear receivedDate.
+const onAddClaimDateChange = (): void => {
+  if (addDialog.receivedDate && !isClaimDateAfterDeploy(addDialog.claimDate, addDialog.receivedDate)) {
+    addDialog.receivedDate = '';
+  }
+  void addFormRef.value?.validate();
+};
 
 const openAddDialog = (): void => {
   addDialog.title = '';
@@ -1215,6 +1573,12 @@ const submitAddDialog = async (): Promise<void> => {
     openNotify(false, 'กรุณาเลือกสิทธิ์การรักษาก่อนบันทึก');
     return;
   }
+  // Defense in depth: the q-input `:rules` already block submit via q-form,
+  // but this guards direct calls to submitAddDialog() too.
+  if (!isClaimDateAfterDeploy(addDialog.deployDate, addDialog.claimDate)) {
+    openNotify(false, 'วันที่ส่งตั้งเบิกต้องมากกว่าวันที่ออกหน่วย');
+    return;
+  }
 
   const resolvedStatusId = resolveStatusId(addDialog.status);
   if (resolvedStatusId === undefined) {
@@ -1224,6 +1588,7 @@ const submitAddDialog = async (): Promise<void> => {
 
   isAddingClaim.value = true;
   try {
+    console.log("Receive Date :",addDialog.receivedDate);
     await api.post('/expenses', {
       title: addDialog.title,
       orgname: addDialog.orgName,
@@ -1232,13 +1597,17 @@ const submitAddDialog = async (): Promise<void> => {
       claimdate: addDialog.claimDate,
       claimamount: addDialog.claimAmount,
       receiveamount: addDialog.receivedAmount,
-      receivedate: addDialog.receivedDate,
+      receivedate: addDialog.receivedDate || null,
       statusId: resolvedStatusId,
       note: addDialog.note,
     });
 
     addDialog.show = false;
     openNotify(true, `เพิ่มรายการ (${addDialog.orgName}) สำเร็จ`);
+    // A brand-new row belongs on page 1 (assuming the default sort is
+    // newest-first) — jump there so it's visible even if the user was
+    // deep in pagination when they created it.
+    pagination.value.page = 1;
     await fetchExpense();
   } catch (err: unknown) {
     const error = err as AxiosError<{ message: string }>;
@@ -1277,6 +1646,13 @@ const confirmDeleteClaim = async (): Promise<void> => {
     await api.delete(`/expenses/${targetId}`);
     deleteDialog.show = false;
     openNotify(true, `ลบรายการ ${targetId} (${targetOrg}) สำเร็จ`);
+
+    // If this was the only row on the current page (and it wasn't page 1),
+    // step back a page before refetching — otherwise the user lands on a
+    // page the server now considers empty.
+    if (CLAIM_RECORDS.value.length === 1 && pagination.value.page > 1) {
+      pagination.value.page -= 1;
+    }
     await fetchExpense();
   } catch (err: unknown) {
     const error = err as AxiosError<{ message: string }>;
@@ -1287,6 +1663,10 @@ const confirmDeleteClaim = async (): Promise<void> => {
 };
 
 // ─── Export to Excel ──────────────────────────────────────────────────────────
+// NOTE: with server-side pagination, `periodClaims` only holds the current
+// page. Exporting the full filtered result set (rather than just the
+// visible page) requires a separate request with a high `limit` (or a
+// dedicated export endpoint) — see the fetchAllForExport() note below.
 interface ClaimExportRow {
   รหัสรอบ: string;
   งานออกหน่วย: string;
@@ -1304,15 +1684,33 @@ interface ClaimExportRow {
 const CLAIM_EXPORT_COL_WIDTHS: readonly number[] = [14, 40, 32, 18, 14, 14, 18, 18, 18, 16, 18];
 const isExporting = ref(false);
 
-const exportClaimsToExcel = (): void => {
-  if (!periodClaims.value.length) {
-    openNotify(false, 'ไม่มีข้อมูลการเบิกจ่ายสำหรับส่งออกในเงื่อนไขนี้');
-    return;
-  }
+// Fetches every row matching the current filters (ignoring the table's
+// page size) so the exported file isn't limited to just the visible page.
+const fetchAllForExport = async (): Promise<ClaimRecord[]> => {
+  const response = await api.get('/expenses', {
+    params: {
+      page: pagination.value.page,
+      limit: pagination.value.rowsPerPage,
+      title: titleQuery.value.trim() || undefined,
+      orgname: orgQuery.value.trim() || undefined,
+      deploydate: deployDateQuery.value.trim() || undefined,
+      statusId: statusId.value ?? undefined,
+    },
+  });
+  return extractList(response.data, 'expenses').map((row) => mapApiRecordToClaim(row as Record<string, any>, 0));
+  // return extractList(response.data, 'expenses').map((row) => mapApiRecordToClaim(row as Record<string, any>));
+};
 
+const exportClaimsToExcel = async (): Promise<void> => {
   isExporting.value = true;
   try {
-    const rows: ClaimExportRow[] = periodClaims.value.map((c) => ({
+    const exportRecords = await fetchAllForExport();
+    if (!exportRecords.length) {
+      openNotify(false, 'ไม่มีข้อมูลการเบิกจ่ายสำหรับส่งออกในเงื่อนไขนี้');
+      return;
+    }
+
+    const rows: ClaimExportRow[] = exportRecords.map((c) => ({
       รหัสรอบ: c.code,
       งานออกหน่วย: c.title,
       หน่วยงานเป้าหมาย: c.orgName,
@@ -1335,8 +1733,9 @@ const exportClaimsToExcel = (): void => {
     const yearLabel = FISCAL_YEARS.find((y) => y.value === fiscalYear.value)?.label ?? fiscalYear.value;
     XLSX.writeFile(workbook, `รายงานการเบิกจ่าย_${yearLabel.replace(/\s|\./g, '')}.xlsx`);
     openNotify(true, 'ส่งออกไฟล์ Excel สำเร็จ');
-  } catch {
-    openNotify(false, 'ส่งออกไฟล์ Excel ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+  } catch (err: unknown) {
+    const error = err as AxiosError<{ message: string }>;
+    openNotify(false, error.response?.data?.message ?? 'ส่งออกไฟล์ Excel ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
   } finally {
     isExporting.value = false;
   }
@@ -1344,8 +1743,11 @@ const exportClaimsToExcel = (): void => {
 
 // ─── Filter Events ────────────────────────────────────────────────────────────
 // titleQuery/orgQuery already carry Quasar's own debounce via the input's
-// `debounce` prop, so this only fires once the user pauses typing.
+// `debounce` prop, so this only fires once the user pauses typing. Any
+// filter change resets to page 1 before refetching, since the previous
+// page may no longer exist under the new filter.
 watch([titleQuery, orgQuery, deployDateQuery, statusFilter], () => {
+  pagination.value.page = 1;
   void fetchExpense();
 });
 
@@ -1354,10 +1756,13 @@ onMounted(() => {
   void fetchExpense();
   void fetchStatus();
   void fetchBenefit();
+  document.addEventListener('touchstart', handleOutsideTap, { passive: true });
 });
 
 onUnmounted(() => {
   if (notifyTimer) clearTimeout(notifyTimer);
+  if (dashAnimFrame !== null) cancelAnimationFrame(dashAnimFrame);
+  document.removeEventListener('touchstart', handleOutsideTap);
 });
 </script>
 
@@ -1422,6 +1827,7 @@ onUnmounted(() => {
   font-weight: 800;
   color: #1a1f27;
   line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-sub {
@@ -1494,6 +1900,7 @@ onUnmounted(() => {
   border-radius: 50%;
   position: relative;
   flex: none;
+  cursor: pointer;
 }
 
 .donut-hole {
@@ -1511,6 +1918,7 @@ onUnmounted(() => {
   font-size: 1.1rem;
   font-weight: 800;
   color: #1a1f27;
+  font-variant-numeric: tabular-nums;
 }
 
 .donut-hole-label {
@@ -1568,12 +1976,12 @@ onUnmounted(() => {
   border-radius: 4px;
   background: #eef0f3;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .bucket-bar-fill {
   height: 100%;
   border-radius: 4px;
-  transition: width 0.3s ease;
 }
 
 .bucket-value {
@@ -2359,5 +2767,29 @@ onUnmounted(() => {
     min-height: 32px;
     padding: 0 4px;
   }
+}
+
+/* ─── Shared hover/touch tooltip (donut + overdue buckets) ─────────────── */
+.chart-tooltip {
+  position: fixed;
+  z-index: 9999;
+  background: #1a1f27;
+  color: #ffffff;
+  font-size: 0.74rem;
+  border-radius: 8px;
+  padding: 8px 10px;
+  pointer-events: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  max-width: 220px;
+}
+
+.chart-tooltip-title {
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.chart-tooltip-line {
+  color: #d7dbe2;
+  line-height: 1.4;
 }
 </style>

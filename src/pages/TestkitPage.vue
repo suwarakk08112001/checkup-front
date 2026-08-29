@@ -6,7 +6,6 @@
         <div class="header-icon">
           <q-icon name="layers" size="22px" />
         </div>
-
         <div class="header-text">
           <div class="header-title">
             การตั้งค่าชุดตรวจสุขภาพ &amp; อัตราการเบิกจ่ายตามสิทธิ์
@@ -19,7 +18,6 @@
             และกำหนดเรทเบิกจ่ายของแต่ละสิทธิ์การรักษา
           </div>
         </div>
-
         <div class="header-toggle">
           <q-btn
             no-caps
@@ -43,7 +41,6 @@
           />
         </div>
       </div>
-
       <!-- ===== Checkup sets view ===== -->
       <template v-if="view === 'sets'">
         <div class="section-row">
@@ -62,18 +59,6 @@
             @click="openCreateDialog"
           />
         </div>
-
-        <!--
-          ===== Sets grid, following the reference q-table pattern =====
-          grid mode + hide-header, same as the provided example. The search
-          box lives in the `top-right` slot (debounced, borderless,
-          v-model bound directly to `filter`) exactly like the reference —
-          the item-filter menu and "clear all" button move into `top-left`
-          so they stay available without cluttering the search slot.
-          `hide-bottom` is dropped so q-table renders its own default
-          pagination footer (rows-per-page dropdown, "X-Y of Z", prev/next
-          arrows) instead of the separate custom pagination bar below.
-        -->
         <q-table
           flat
           borderless
@@ -135,7 +120,6 @@
                   </div>
                 </q-menu>
               </q-btn>
-
               <q-btn
                 v-if="hasActiveFilters"
                 no-caps
@@ -148,12 +132,6 @@
               />
             </div>
           </template>
-
-          <!-- Search box, same shape as the reference table:
-               borderless, dense, debounce="300", v-model + append icon.
-               @clear resets the model directly — with `debounce` set,
-               the clear button's emitted empty value can otherwise get
-               absorbed by the debounce timer and the text won't disappear. -->
           <template v-slot:top-right>
             <q-input
               borderless
@@ -170,7 +148,6 @@
               </template>
             </q-input>
           </template>
-
           <template v-slot:item="scope">
             <div class="col-12 col-md-6 q-pa-xs">
               <div class="set-card">
@@ -183,10 +160,8 @@
                     }}</span>
                   </div>
                 </div>
-
                 <div class="set-title">{{ scope.row.title }}</div>
                 <div class="set-desc">{{ scope.row.description }}</div>
-
                 <div class="set-items-label">
                   รายการตรวจที่ผูกใน Set นี้ ({{ scope.row.itemIds.length }}
                   รายการ):
@@ -208,7 +183,6 @@
                     {{ item.label }}
                   </span>
                 </div>
-
                 <div class="set-card-actions">
                   <q-btn
                     no-caps
@@ -232,9 +206,6 @@
               </div>
             </div>
           </template>
-
-          <!-- ===== Empty state, rendered by the table itself when the
-               filter/filter-method yields no rows ===== -->
           <template v-slot:no-data>
             <div v-if="hasActiveFilters" class="empty-state">
               <q-icon name="search_off" size="28px" class="empty-icon" />
@@ -249,7 +220,6 @@
                 @click="clearFilters"
               />
             </div>
-
             <div v-else class="empty-state">
               <q-icon name="inventory_2" size="28px" class="empty-icon" />
               <div class="empty-title">ยังไม่มีชุดตรวจ</div>
@@ -260,7 +230,6 @@
           </template>
         </q-table>
       </template>
-
       <!-- ===== Reimbursement matrix view ===== -->
       <template v-else>
         <div class="matrix-header-card">
@@ -281,7 +250,7 @@
           </div>
           <div class="matrix-header-actions">
             <span class="matrix-header-count"
-              >{{ filteredMatrixItems.length }} รายการ</span
+              >{{ matrixTablePagination.rowsNumber }} รายการ</span
             >
             <q-btn
               no-caps
@@ -289,37 +258,29 @@
               icon="check_circle"
               label="บันทึกตารางเรทเบิกจ่าย"
               class="matrix-save-btn"
-              @click="saveMatrixRates"
+              :loading="isSavingMatrix"
+              :disable="isLoadingMatrix || !ITEM_CATALOG.length"
+              @click="openSaveMatrixDialog"
             />
           </div>
         </div>
-
-        <!--
-          ===== Rate matrix, same bordered row-table + built-in footer
-          structure as the reimbursement tracking table: a search box
-          above a bordered table with a shaded header row, and the
-          default q-table pagination footer at the bottom (rows-per-page
-          dropdown + "X-Y of Z" + prev/next). Each rate cell is rendered
-          through a custom `body` slot so it stays an editable q-input
-          bound straight to `matrixRates`, exactly as before.
-        -->
         <q-table
           flat
           bordered
           :rows="ITEM_CATALOG"
           :columns="matrixColumns"
           row-key="id"
-          :filter="matrixSearchQuery"
-          :filter-method="filterMatrixRows"
           v-model:pagination="matrixTablePagination"
           :rows-per-page-options="[5, 10, 20, 50]"
+          :loading="isLoadingMatrix"
           class="matrix-qtable"
+          @request="onMatrixTableRequest"
         >
           <template v-slot:top-right>
             <q-input
               borderless
               dense
-              debounce="300"
+              debounce="400"
               clearable
               v-model="matrixSearchQuery"
               placeholder="ค้นหารายการตรวจ หรือรหัสรายการ..."
@@ -331,7 +292,6 @@
               </template>
             </q-input>
           </template>
-
           <template v-slot:body="props">
             <q-tr :props="props">
               <q-td key="item" :props="props" class="matrix-td-item">
@@ -359,9 +319,21 @@
               </q-td>
             </q-tr>
           </template>
-
           <template v-slot:no-data>
-            <div class="empty-state">
+            <div v-if="loadError" class="empty-state">
+              <q-icon name="cloud_off" size="28px" class="empty-icon" />
+              <div class="empty-title">โหลดข้อมูลตารางเรทเบิกจ่ายไม่สำเร็จ</div>
+              <div class="empty-sub">ตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง</div>
+              <q-btn
+                no-caps
+                flat
+                dense
+                label="โหลดใหม่"
+                class="empty-clear-btn"
+                @click="loadMatrixData"
+              />
+            </div>
+            <div v-else class="empty-state">
               <q-icon name="search_off" size="28px" class="empty-icon" />
               <div class="empty-title">ไม่พบรายการตรวจที่ตรงกับเงื่อนไข</div>
               <div class="empty-sub">ลองแก้คำค้นหา</div>
@@ -377,7 +349,6 @@
           </template>
         </q-table>
       </template>
-
       <!-- ===== Create / edit set dialog ===== -->
       <q-dialog v-model="dialogOpen" persistent>
         <q-card class="set-dialog">
@@ -387,7 +358,6 @@
             </div>
             <q-btn flat round dense icon="close" @click="closeDialog" />
           </q-card-section>
-
           <q-card-section class="set-dialog-body">
             <div class="dialog-grid">
               <div class="dialog-code-field">
@@ -402,7 +372,6 @@
                 class="dialog-title-input"
               />
             </div>
-
             <q-input
               dense
               outlined
@@ -412,7 +381,6 @@
               label="คำอธิบาย"
               class="dialog-field"
             />
-
             <div class="dialog-items-label">
               เลือกรายการตรวจที่รวมใน Set นี้:
             </div>
@@ -436,13 +404,11 @@
                 }}</span>
               </label>
             </div>
-
             <div class="dialog-cost-preview">
               <span>ต้นทุนวัสดุ/น้ำยาต่อหัวโดยประมาณ</span>
               <strong>{{ fmtBaht(previewCost) }}</strong>
             </div>
           </q-card-section>
-
           <q-card-actions align="right" class="set-dialog-actions">
             <q-btn no-caps flat label="ยกเลิก" @click="closeDialog" />
             <q-btn
@@ -455,7 +421,6 @@
           </q-card-actions>
         </q-card>
       </q-dialog>
-
       <!-- ===== Delete confirmation dialog ===== -->
       <q-dialog v-model="deleteDialogOpen" persistent>
         <q-card class="delete-dialog">
@@ -488,61 +453,72 @@
           </q-card-actions>
         </q-card>
       </q-dialog>
+      <!-- ===== Save matrix rates confirmation dialog ===== -->
+      <q-dialog v-model="saveMatrixDialogOpen" persistent>
+        <q-card class="delete-dialog">
+          <q-card-section class="delete-dialog-body">
+            <q-icon
+              name="help_outline"
+              size="26px"
+              class="save-dialog-icon"
+            />
+            <div class="delete-dialog-title">ยืนยันการบันทึกตารางเรทเบิกจ่าย</div>
+            <div class="delete-dialog-desc">
+              ต้องการบันทึกเรทเบิกจ่ายของรายการตรวจ
+              <strong>{{ ITEM_CATALOG.length }} รายการ</strong>
+              ในหน้านี้ใช่หรือไม่? การเปลี่ยนแปลงจะมีผลทันทีหลังบันทึก
+            </div>
+          </q-card-section>
+          <q-card-actions align="right" class="delete-dialog-actions">
+            <q-btn
+              no-caps
+              flat
+              label="ยกเลิก"
+              :disable="isSavingMatrix"
+              @click="saveMatrixDialogOpen = false"
+            />
+            <q-btn
+              no-caps
+              unelevated
+              label="ยืนยันบันทึก"
+              class="matrix-save-btn"
+              :loading="isSavingMatrix"
+              @click="confirmSaveMatrixRates"
+            />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
     </div>
   </q-page>
 </template>
-
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch, onMounted } from "vue";
 import { Notify } from "quasar";
+import { api } from "@/boot/axios"; // ปรับ path ให้ตรงกับ axios instance ของโปรเจกต์จริง
 
 /* =========================================================================
  * Shared design tokens
- * Kept consistent with the rest of the admin dashboard's palette.
  * ========================================================================= */
-
 const COLORS = {
   revenue: "#1e6fd9",
   profit: "#17a865",
   warning: "#f5a524",
   danger: "#e5484d"
 } as const;
-
 const ITEM_CHIP_COLORS: readonly string[] = [COLORS.profit, COLORS.revenue];
-
 function chipColor(index: number): string {
   return ITEM_CHIP_COLORS[index % ITEM_CHIP_COLORS.length];
 }
 
 /* =========================================================================
- * Pagination page-size options, shared by both paginated lists on this
- * page (checkup sets grid and the reimbursement matrix table).
+ * View toggle
  * ========================================================================= */
-
-const PAGE_SIZE_OPTIONS = [
-  { label: "6 รายการ/หน้า", value: 6 },
-  { label: "12 รายการ/หน้า", value: 12 },
-  { label: "24 รายการ/หน้า", value: 24 }
-];
-
-/* =========================================================================
- * View toggle: manage checkup sets vs. edit the reimbursement matrix
- * ========================================================================= */
-
 type View = "sets" | "matrix";
 const view = ref<View>("sets");
 
 /* =========================================================================
- * Checkup item catalog
- *
- * The master list of individual tests that a set can be built from. Each
- * entry carries its own material/reagent cost, so a set's per-head cost is
- * always the sum of whatever tests are checked in — no separate manual
- * "cost per head" field to keep in sync. The same catalog also powers the
- * "filter by included test" checklist above the set grid and the rows of
- * the reimbursement matrix.
+ * Checkup item catalog — GET /reimbursement (server-paginated)
  * ========================================================================= */
-
 interface CatalogItem {
   id: string;
   code: string;
@@ -550,80 +526,225 @@ interface CatalogItem {
   icon: string;
   unitCost: number;
 }
+interface ReimbursementApiItem {
+  id: number;
+  checkUpItem: string;
+  UC: number;
+  SSS: number;
+  CSMBS: number;
+  LGO: number;
+  SELFPAY: number;
+}
+interface ReimbursementApiResponse {
+  reimbursement: {
+    data: ReimbursementApiItem[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  message: string;
+}
 
-const ITEM_CATALOG: readonly CatalogItem[] = [
-  {
-    id: "physical-exam",
-    code: "PE",
-    label: "ตรวจร่างกายทั่วไปโดยแพทย์ (Physical Exam)",
-    icon: "medical_services",
-    unitCost: 5.0
-  },
-  {
-    id: "cbc",
-    code: "CBC",
-    label: "ตรวจความสมบูรณ์ของเม็ดเลือด (CBC)",
-    icon: "bloodtype",
-    unitCost: 25.0
-  },
-  {
-    id: "fbs",
-    code: "FBS",
-    label: "ตรวจระดับน้ำตาลในเลือด (Fasting Blood Sugar)",
-    icon: "water_drop",
-    unitCost: 19.0
-  },
-  {
-    id: "lipid",
-    code: "LIPID",
-    label: "ตรวจระดับไขมันในเลือด (Chol, Trig, HDL, LDL)",
-    icon: "science",
-    unitCost: 50.0
-  },
-  {
-    id: "liver",
-    code: "LFT",
-    label: "ตรวจการทำงานของตับ (ALT/AST Function)",
-    icon: "science",
-    unitCost: 30.0
-  },
-  {
-    id: "urinalysis",
-    code: "UA",
-    label: "ตรวจปัสสาวะสมบูรณ์แบบ (Urinalysis)",
-    icon: "opacity",
-    unitCost: 21.2
-  },
-  {
-    id: "chest-xray",
-    code: "CXR",
-    label: "เอ็กซเรย์ทรวงอกดิจิทัล (Chest X-Ray)",
-    icon: "medical_information",
-    unitCost: 45.0
-  },
-  {
-    id: "ecg",
-    code: "ECG",
-    label: "ตรวจคลื่นไฟฟ้าหัวใจ (Electrocardiogram 12-lead)",
-    icon: "monitor_heart",
-    unitCost: 20.0
-  }
-];
+const ITEM_CATALOG = ref<CatalogItem[]>([]);
+const isLoadingMatrix = ref(false);
+const isSavingMatrix = ref(false);
+const loadError = ref(false);
 
-const CATALOG_BY_ID: Readonly<Record<string, CatalogItem>> = Object.fromEntries(
-  ITEM_CATALOG.map(item => [item.id, item])
+const CATALOG_BY_ID = computed<Record<string, CatalogItem>>(() =>
+  Object.fromEntries(ITEM_CATALOG.value.map(item => [item.id, item]))
 );
-
 function getCatalogItem(id: string): CatalogItem {
   return (
-    CATALOG_BY_ID[id] ?? { id, code: "", label: id, icon: "help_outline", unitCost: 0 }
+    CATALOG_BY_ID.value[id] ?? {
+      id,
+      code: "",
+      label: id,
+      icon: "help_outline",
+      unitCost: 0
+    }
   );
 }
 
-/* =========================================================================
- * Checkup sets
- * ========================================================================= */
+// NOTE: current /reimbursement sample data has no "[CODE]" suffix on
+// checkUpItem (e.g. "ตรวจคลื่นไฟฟ้าหัวใจ (Electrocardiogram 12-lead)"), so
+// this regex currently never matches and `code` ends up "" for every row.
+// Left as-is per your original design — flag if the API is expected to
+// start including a code suffix, or if `.matrix-item-code` should instead
+// pull from somewhere else.
+function parseCheckUpItem(text: string): { label: string; code: string } {
+  const match = text.match(/\[(.*?)\]\s*$/);
+  const code = match ? match[1] : "";
+  const label = text.replace(/\s*\[.*?\]\s*$/, "").trim();
+  return { label, code };
+}
 
+const ICON_BY_CODE: Readonly<Record<string, string>> = {
+  PE: "medical_services",
+  CBC: "bloodtype",
+  FBS: "water_drop",
+  LIPID: "science",
+  LFT: "science",
+  UA: "opacity",
+  CXR: "medical_information",
+  ECG: "monitor_heart"
+};
+
+const matrixSearchQuery = ref("");
+const matrixTablePagination = ref({
+  page: 1,
+  rowsPerPage: 10,
+  rowsNumber: 0
+});
+
+interface MatrixFetchParams {
+  page: number;
+  limit: number;
+  search: string;
+}
+
+async function fetchReimbursementData(params: MatrixFetchParams): Promise<void> {
+  isLoadingMatrix.value = true;
+  loadError.value = false;
+  try {
+    const res = await api.get<ReimbursementApiResponse>("/reimbursement", {
+      params: {
+        page: params.page,
+        limit: params.limit,
+        search: params.search || undefined
+      }
+    });
+    const items = res.data?.reimbursement?.data ?? [];
+
+    const catalog: CatalogItem[] = [];
+
+    items.forEach(item => {
+      const { label, code } = parseCheckUpItem(item.checkUpItem);
+      const id = String(item.id);
+
+      catalog.push({
+        id,
+        code,
+        label,
+        icon: ICON_BY_CODE[code] ?? "help_outline",
+        unitCost: 0
+      });
+
+      // NOTE: these keys (uc/sss/csmbs/lgo/selfpay) are hardcoded and must
+      // match rights.value[].id below (derived from benefit.code.toLowerCase()).
+      // If /benefit/all ever returns a code outside this fixed set, that
+      // benefit's column will show ฿0 and its rate won't be included here.
+      matrixRates[id] = {
+        uc: item.UC ?? 0,
+        sss: item.SSS ?? 0,
+        csmbs: item.CSMBS ?? 0,
+        lgo: item.LGO ?? 0,
+        selfpay: item.SELFPAY ?? 0
+      };
+    });
+
+    ITEM_CATALOG.value = catalog;
+    matrixTablePagination.value.rowsNumber = res.data?.reimbursement?.total ?? catalog.length;
+  } catch (err) {
+    console.error(err);
+    loadError.value = true;
+    matrixTablePagination.value.rowsNumber = 0;
+    Notify.create({
+      type: "negative",
+      message: "โหลดข้อมูลตารางเรทเบิกจ่ายไม่สำเร็จ",
+      position: "top"
+    });
+  } finally {
+    isLoadingMatrix.value = false;
+  }
+}
+
+function loadMatrixData(): void {
+  void fetchReimbursementData({
+    page: matrixTablePagination.value.page,
+    limit: matrixTablePagination.value.rowsPerPage,
+    search: matrixSearchQuery.value.trim()
+  });
+}
+
+function onMatrixTableRequest(requestProp: {
+  pagination: { page: number; rowsPerPage: number };
+}): void {
+  matrixTablePagination.value.page = requestProp.pagination.page;
+  matrixTablePagination.value.rowsPerPage = requestProp.pagination.rowsPerPage;
+  loadMatrixData();
+}
+
+watch(matrixSearchQuery, () => {
+  matrixTablePagination.value.page = 1;
+  loadMatrixData();
+});
+
+/* =========================================================================
+ * Rights (reimbursement columns) — loaded from GET /benefit/all so the
+ * matrix header shows real code/description from the DB instead of a
+ * hardcoded list.
+ *
+ * ASSUMPTION: response shape is { benefits: BenefitApiItem[], message }.
+ * Adjust the "benefits" key below if the real API wraps it differently
+ * (e.g. "data").
+ * ========================================================================= */
+ interface Right {
+  id: string; // lowercase benefit.code — must match matrixRates keys
+  label: string; // benefit.code, e.g. "UC"
+  subLabel: string; // cleaned description, e.g. "บัตรทอง (สปสช. / หลักประกันสุขภาพ)"
+}
+interface BenefitApiItem {
+  id: number;
+  code: string;
+  benefitname: string;
+  description: string;
+}
+// The API returns a bare array — no wrapper object.
+type BenefitApiResponse = BenefitApiItem[];
+
+const rights = ref<Right[]>([]);
+const isLoadingRights = ref(false);
+
+// Strips a leading "CODE\r\n" (or "CODE\n") from description, since the
+// API duplicates the code at the front of the field
+// (e.g. "CSMBS\r\nจ่ายตรงข้าราชการ (กรมบัญชีกลาง)" -> "จ่ายตรงข้าราชการ (กรมบัญชีกลาง)").
+function cleanBenefitDescription(code: string, description: string): string {
+  const prefix = new RegExp(`^${code}\\s*[\\r\\n]+\\s*`);
+  return description.replace(prefix, "").trim();
+}
+
+async function loadRights(): Promise<void> {
+  isLoadingRights.value = true;
+  try {
+    const res = await api.get<BenefitApiResponse>("/benefit/all");
+    const items = res.data ?? [];
+
+    rights.value = items.map(b => ({
+      id: b.code.toLowerCase(),
+      label: b.code,
+      subLabel: cleanBenefitDescription(b.code, b.description)
+    }));
+  } catch (err) {
+    console.error(err);
+    Notify.create({
+      type: "negative",
+      message: "โหลดข้อมูลสิทธิ์การรักษาไม่สำเร็จ",
+      position: "top"
+    });
+  } finally {
+    isLoadingRights.value = false;
+  }
+}
+
+onMounted(() => {
+  loadRights();
+  loadMatrixData();
+});
+
+/* =========================================================================
+ * Checkup sets (still mock/client-side — no endpoint given for this part)
+ * ========================================================================= */
 interface CheckupSet {
   id: string;
   code: string;
@@ -632,7 +753,6 @@ interface CheckupSet {
   costPerHead: number;
   itemIds: string[];
 }
-
 const checkupSets = ref<CheckupSet[]>([
   {
     id: "set-a",
@@ -651,50 +771,34 @@ const checkupSets = ref<CheckupSet[]>([
     itemIds: ["physical-exam", "cbc", "fbs", "lipid", "urinalysis"]
   }
 ]);
-
 function setItems(set: CheckupSet): CatalogItem[] {
   return set.itemIds.map(getCatalogItem);
 }
-
 function fmtBaht(amount: number): string {
   return `฿${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /* =========================================================================
- * Search + item-based filtering
- *
- * `searchQuery` matches against a set's title and code. `filterItemIds`
- * narrows to sets that include every checked test (AND match) — ticking
- * more boxes narrows the result further, which matches how the filter
- * menu reads ("sets that have all of these tests"). The same matching
- * logic backs both the q-table `filter-method` (so the grid only renders
- * matching rows) and our own `filteredSets` computed (used for the "X of
- * Y" count and the pagination range text).
+ * Search + item-based filtering (checkup sets — still client-side)
  * ========================================================================= */
-
 const searchQuery = ref("");
 const filterItemIds = ref<string[]>([]);
-
 const hasActiveFilters = computed(
   () => searchQuery.value.trim().length > 0 || filterItemIds.value.length > 0
 );
-
 const filterButtonLabel = computed(() =>
   filterItemIds.value.length
     ? `กรองรายการตรวจ (${filterItemIds.value.length})`
     : "กรองตามรายการตรวจ"
 );
-
 interface SetFilterTerms {
   query: string;
   itemIds: string[];
 }
-
 const setFilterTerms = computed<SetFilterTerms>(() => ({
   query: searchQuery.value.trim().toLowerCase(),
   itemIds: filterItemIds.value
 }));
-
 function matchesSetFilter(s: CheckupSet, terms: SetFilterTerms): boolean {
   const matchesQuery =
     !terms.query ||
@@ -704,86 +808,36 @@ function matchesSetFilter(s: CheckupSet, terms: SetFilterTerms): boolean {
     !terms.itemIds.length || terms.itemIds.every(id => s.itemIds.includes(id));
   return matchesQuery && matchesItems;
 }
-
-// q-table's expected filter-method signature: (rows, terms) => filtered rows.
 function filterSetRows(
   rows: readonly CheckupSet[],
   terms: SetFilterTerms
 ): CheckupSet[] {
   return rows.filter(s => matchesSetFilter(s, terms));
 }
-
 const filteredSets = computed(() =>
   checkupSets.value.filter(s => matchesSetFilter(s, setFilterTerms.value))
 );
-
 function clearFilters(): void {
   searchQuery.value = "";
   filterItemIds.value = [];
 }
 
 /* =========================================================================
- * Checkup-sets grid + pagination
- *
- * The card grid itself is rendered by q-table in `grid` mode (via the
- * `item` slot), which handles slicing rows to the current page/rowsPerPage
- * internally. We keep our own `setsPagination` ref as the single source of
- * truth (bound to the table with v-model:pagination) so the pagination bar
- * below the grid — built to match the rest of this app's UI rather than
- * Quasar's default footer — can read/drive the same state.
+ * Checkup-sets grid + pagination (client-side)
  * ========================================================================= */
-
 const setColumns = [
   { name: "code", label: "รหัสชุดตรวจ", field: "code", align: "left" as const },
   { name: "title", label: "ชื่อชุดตรวจ", field: "title", align: "left" as const }
 ];
-
 const setsPagination = ref({ page: 1, rowsPerPage: 6 });
-
-// Reset to page 1 whenever the filtered set or page size changes, so the
-// pager never points past the end of a newly-narrowed result set.
 watch([searchQuery, filterItemIds, () => setsPagination.value.rowsPerPage], () => {
   setsPagination.value.page = 1;
 });
 
 /* =========================================================================
  * Reimbursement rate matrix (checkup items x rights)
- *
- * This is the authoritative per-test reimbursement rate — how much the
- * fund pays back for each individual checkup item under each right. It's
- * independent of which sets a test happens to belong to.
  * ========================================================================= */
-
-interface Right {
-  id: string;
-  label: string;
-  subLabel: string;
-}
-
-const rights: readonly Right[] = [
-  { id: "uc", label: "UC", subLabel: "บัตรทอง (สปสช. / หลักประกันสุขภาพ)" },
-  { id: "sss", label: "SSS", subLabel: "ประกันสังคม (ม.33/ม.39)" },
-  { id: "csmbs", label: "CSMBS", subLabel: "จ่ายตรงข้าราชการ (กรมบัญชีกลาง)" },
-  { id: "lgo", label: "LGO", subLabel: "องค์กรปกครองส่วนท้องถิ่น (อปท.)" },
-  {
-    id: "selfpay",
-    label: "SELFPAY",
-    subLabel: "ชำระเงินเอง / เงินบำรุงโรงพยาบาล"
-  }
-];
-
-// Seed rates, keyed by checkup-item id then right id (บาทต่อครั้ง).
-const matrixRates = reactive<Record<string, Record<string, number>>>({
-  "physical-exam": { uc: 50, sss: 60, csmbs: 80, lgo: 80, selfpay: 100 },
-  cbc: { uc: 90, sss: 80, csmbs: 100, lgo: 100, selfpay: 120 },
-  fbs: { uc: 40, sss: 50, csmbs: 60, lgo: 60, selfpay: 70 },
-  lipid: { uc: 150, sss: 180, csmbs: 200, lgo: 200, selfpay: 250 },
-  liver: { uc: 110, sss: 130, csmbs: 150, lgo: 150, selfpay: 180 },
-  urinalysis: { uc: 40, sss: 45, csmbs: 50, lgo: 50, selfpay: 60 },
-  "chest-xray": { uc: 170, sss: 170, csmbs: 200, lgo: 200, selfpay: 220 },
-  ecg: { uc: 150, sss: 180, csmbs: 200, lgo: 200, selfpay: 250 }
-});
-
+const matrixRates = reactive<Record<string, Record<string, number>>>({});
 function setItemRate(
   itemId: string,
   rightId: string,
@@ -794,51 +848,46 @@ function setItemRate(
   matrixRates[itemId][rightId] = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
-function saveMatrixRates(): void {
-  Notify.create({
-    type: "positive",
-    message: "บันทึกตารางเรทเบิกจ่ายสำเร็จ",
-    position: "top"
-  });
+const saveMatrixDialogOpen = ref(false);
+
+function openSaveMatrixDialog(): void {
+  if (!ITEM_CATALOG.value.length) return;
+  saveMatrixDialogOpen.value = true;
 }
 
-/* =========================================================================
- * Matrix search + table
- *
- * The matrix is a row-mode q-table (bordered, shaded header) rather than
- * a plain HTML table, so it gets the same built-in pagination footer as
- * the sets grid. `filteredMatrixItems` still exists for the header's item
- * count and the search-input's "clear" affordance; `filterMatrixRows` is
- * the filter-method q-table itself calls to decide which rows to show.
- * ========================================================================= */
+async function confirmSaveMatrixRates(): Promise<void> {
+  if (!ITEM_CATALOG.value.length) return;
+  isSavingMatrix.value = true;
+  try {
+    const payload = ITEM_CATALOG.value.map(item => ({
+      checkupId: Number(item.id), // was "id" — UpdateReimbursementDto requires "checkupId"
+      UC: matrixRates[item.id]?.uc ?? 0,
+      SSS: matrixRates[item.id]?.sss ?? 0,
+      CSMBS: matrixRates[item.id]?.csmbs ?? 0,
+      LGO: matrixRates[item.id]?.lgo ?? 0,
+      SELFPAY: matrixRates[item.id]?.selfpay ?? 0
+    }));
+    await api.patch("/reimbursement/update-many/bulk", { data: payload });
 
-const matrixSearchQuery = ref("");
-
-const filteredMatrixItems = computed(() => {
-  const q = matrixSearchQuery.value.trim().toLowerCase();
-  if (!q) return ITEM_CATALOG;
-  return ITEM_CATALOG.filter(
-    item =>
-      item.label.toLowerCase().includes(q) || item.code.toLowerCase().includes(q)
-  );
-});
-
-function filterMatrixRows(
-  rows: readonly CatalogItem[],
-  terms: string
-): CatalogItem[] {
-  const q = terms.trim().toLowerCase();
-  if (!q) return [...rows];
-  return rows.filter(
-    item => item.label.toLowerCase().includes(q) || item.code.toLowerCase().includes(q)
-  );
+    saveMatrixDialogOpen.value = false;
+    Notify.create({
+      type: "positive",
+      message: "บันทึกตารางเรทเบิกจ่ายสำเร็จ",
+      position: "top"
+    });
+  } catch (err) {
+    console.error(err);
+    Notify.create({
+      type: "negative",
+      message: "บันทึกตารางเรทเบิกจ่ายไม่สำเร็จ",
+      position: "top"
+    });
+  } finally {
+    isSavingMatrix.value = false;
+  }
 }
 
-// Column definitions for the row-mode matrix table: the item name/code
-// column plus one column per right. Only `name`/`label` are actually used
-// (header rendering + the `item` cell) — the rate cells are drawn entirely
-// through the custom `body` slot in the template, keyed off `rights`
-// directly, so no `field`/`format` is needed on the right-hand columns.
+// `rights` is now a ref, so `.value` is required here in <script setup>.
 const matrixColumns = computed(() => [
   {
     name: "item",
@@ -846,7 +895,7 @@ const matrixColumns = computed(() => [
     field: "label",
     align: "left" as const
   },
-  ...rights.map(r => ({
+  ...rights.value.map(r => ({
     name: r.id,
     label: `${r.label} — ${r.subLabel}`,
     field: r.id,
@@ -854,30 +903,18 @@ const matrixColumns = computed(() => [
   }))
 ]);
 
-const matrixTablePagination = ref({ page: 1, rowsPerPage: 10 });
-
-watch(matrixSearchQuery, () => {
-  matrixTablePagination.value.page = 1;
-});
-
 /* =========================================================================
  * Create / edit dialog
  * ========================================================================= */
-
 interface SetForm {
   code: string;
   title: string;
   description: string;
   itemIds: string[];
 }
-
 function emptyForm(): SetForm {
   return { code: "", title: "", description: "", itemIds: [] };
 }
-
-// Next sequential code (SET-A, SET-B, SET-C, ...) based on the highest
-// letter currently in use, so a freshly-created set never collides with an
-// existing one even after sets have been removed.
 function nextSetCode(): string {
   const usedLetters = checkupSets.value
     .map(s => s.code.match(/^SET-([A-Z])$/)?.[1])
@@ -888,24 +925,18 @@ function nextSetCode(): string {
     : "A".charCodeAt(0) - 1;
   return `SET-${String.fromCharCode(highest + 1)}`;
 }
-
 const dialogOpen = ref(false);
 const editingSet = ref<CheckupSet | null>(null);
 const form = reactive<SetForm>(emptyForm());
-
-// Live estimate of the set's per-head cost, summed from whichever catalog
-// items are currently checked — mirrors what gets saved as costPerHead.
 const previewCost = computed(() =>
   form.itemIds.reduce((sum, id) => sum + getCatalogItem(id).unitCost, 0)
 );
-
 function openCreateDialog(): void {
   editingSet.value = null;
   Object.assign(form, emptyForm());
   form.code = nextSetCode();
   dialogOpen.value = true;
 }
-
 function openEditDialog(set: CheckupSet): void {
   editingSet.value = set;
   Object.assign(form, {
@@ -916,11 +947,9 @@ function openEditDialog(set: CheckupSet): void {
   });
   dialogOpen.value = true;
 }
-
 function closeDialog(): void {
   dialogOpen.value = false;
 }
-
 function saveSet(): void {
   if (!form.title.trim()) {
     Notify.create({
@@ -938,7 +967,6 @@ function saveSet(): void {
     });
     return;
   }
-
   if (editingSet.value) {
     const target = checkupSets.value.find(s => s.id === editingSet.value!.id);
     if (target) {
@@ -968,33 +996,26 @@ function saveSet(): void {
       position: "top"
     });
   }
-
   dialogOpen.value = false;
 }
 
 /* =========================================================================
  * Delete set
  * ========================================================================= */
-
 const deleteDialogOpen = ref(false);
 const setPendingDelete = ref<CheckupSet | null>(null);
-
 function requestDelete(set: CheckupSet): void {
   setPendingDelete.value = set;
   deleteDialogOpen.value = true;
 }
-
 function cancelDelete(): void {
   deleteDialogOpen.value = false;
   setPendingDelete.value = null;
 }
-
 function confirmDelete(): void {
   if (!setPendingDelete.value) return;
   const { id, code } = setPendingDelete.value;
-
   checkupSets.value = checkupSets.value.filter(s => s.id !== id);
-
   Notify.create({
     type: "positive",
     message: `ลบ ${code} สำเร็จ`,
@@ -1004,14 +1025,12 @@ function confirmDelete(): void {
   setPendingDelete.value = null;
 }
 </script>
-
 <style scoped>
 .kits-page {
   background: #f5f7fa;
   padding: 20px 16px 40px;
   overflow-x: hidden;
 }
-
 .kits-container {
   max-width: 1320px;
   margin: 0 auto;
@@ -1019,8 +1038,6 @@ function confirmDelete(): void {
   flex-direction: column;
   gap: 16px;
 }
-
-/* ===== Header ===== */
 .header-card {
   background: #ffffff;
   border: 1px solid #e6e9ee;
@@ -1031,7 +1048,6 @@ function confirmDelete(): void {
   align-items: center;
   gap: 14px;
 }
-
 .header-icon {
   width: 40px;
   height: 40px;
@@ -1043,30 +1059,25 @@ function confirmDelete(): void {
   justify-content: center;
   flex: none;
 }
-
 .header-text {
   min-width: 0;
 }
-
 .header-title {
   font-size: 1rem;
   font-weight: 800;
   color: #1a1f27;
   overflow-wrap: anywhere;
 }
-
 .header-title-en {
   font-weight: 600;
   color: #6b7280;
 }
-
 .header-sub {
   font-size: 0.8rem;
   color: #8a94a3;
   margin-top: 2px;
   overflow-wrap: anywhere;
 }
-
 .header-toggle {
   display: flex;
   align-items: stretch;
@@ -1074,7 +1085,6 @@ function confirmDelete(): void {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-
 .toggle-btn {
   font-size: 0.76rem;
   font-weight: 600;
@@ -1089,18 +1099,14 @@ function confirmDelete(): void {
     border-color 0.15s ease,
     color 0.15s ease;
 }
-
 .toggle-btn :deep(.q-btn__content) {
   line-height: 1.25;
 }
-
 .toggle-btn--active {
   background: #17a865;
   color: #ffffff;
   border-color: #17a865;
 }
-
-/* ===== Section row ===== */
 .section-row {
   display: flex;
   align-items: center;
@@ -1108,18 +1114,15 @@ function confirmDelete(): void {
   gap: 10px;
   flex-wrap: wrap;
 }
-
 .section-label {
   font-size: 0.86rem;
   font-weight: 700;
   color: #1a1f27;
 }
-
 .section-count {
   font-weight: 600;
   color: #8a94a3;
 }
-
 .create-btn {
   background: #17a865;
   color: #ffffff;
@@ -1128,24 +1131,19 @@ function confirmDelete(): void {
   border-radius: 8px;
   padding: 0 14px;
 }
-
-/* ===== Filter toolbar (top-left slot: item-filter menu + clear-all) ===== */
 .filter-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
-
 .search-input {
   width: 260px;
   max-width: 100%;
 }
-
 .search-input :deep(input) {
   font-size: 0.82rem;
 }
-
 .filter-btn {
   font-size: 0.76rem;
   font-weight: 600;
@@ -1155,66 +1153,49 @@ function confirmDelete(): void {
   padding: 0 10px;
   flex: none;
 }
-
 .clear-filters-btn {
   font-size: 0.76rem;
   font-weight: 600;
   color: #8a94a3;
   flex: none;
 }
-
 .filter-menu {
   padding: 14px;
   width: 380px;
   max-width: 90vw;
 }
-
 .filter-menu-title {
   font-size: 0.8rem;
   font-weight: 700;
   color: #1a1f27;
   margin-bottom: 10px;
 }
-
 .item-check-grid.item-check-grid--menu {
   grid-template-columns: 1fr;
   max-height: 320px;
   overflow-y: auto;
   padding-right: 6px;
 }
-
 .filter-menu-actions {
   display: flex;
   justify-content: flex-end;
   margin-top: 8px;
 }
-
-/* ===== Sets grid (rendered by q-table's grid-mode item slot; card sizing
-   comes from the col-12 / col-md-6 wrapper in the template, this class
-   only styles the q-table host element itself) ===== */
 .sets-table {
   background: transparent;
 }
-
 .sets-table :deep(.q-table__top) {
   padding: 4px 4px 12px;
   flex-wrap: wrap;
   gap: 10px;
 }
-
-/* q-table renders top-left/top-right slot content as flex children —
-   without min-width: 0 + flex-basis, a long filter button next to a
-   fixed-width search input has no room to shrink and the two collide.
-   Letting each side wrap to its own line on narrow widths fixes it. */
 .sets-table :deep(.q-table__top > div) {
   flex: 1 1 auto;
   min-width: 240px;
 }
-
 .sets-table :deep(.q-table__top-right) {
   justify-content: flex-end;
 }
-
 .set-card {
   background: #ffffff;
   border: 1px solid #e6e9ee;
@@ -1225,7 +1206,6 @@ function confirmDelete(): void {
   flex-direction: column;
   gap: 6px;
 }
-
 .set-card-top {
   display: flex;
   align-items: flex-start;
@@ -1233,7 +1213,6 @@ function confirmDelete(): void {
   gap: 10px;
   flex-wrap: wrap;
 }
-
 .set-code {
   font-size: 0.72rem;
   font-weight: 700;
@@ -1241,25 +1220,21 @@ function confirmDelete(): void {
   color: #8a94a3;
   text-transform: uppercase;
 }
-
 .set-cost {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   text-align: right;
 }
-
 .set-cost-label {
   font-size: 0.68rem;
   color: #8a94a3;
 }
-
 .set-cost-value {
   font-size: 0.95rem;
   font-weight: 800;
   color: #1e6fd9;
 }
-
 .set-title {
   font-size: 0.98rem;
   font-weight: 700;
@@ -1267,26 +1242,22 @@ function confirmDelete(): void {
   margin-top: 4px;
   overflow-wrap: anywhere;
 }
-
 .set-desc {
   font-size: 0.8rem;
   color: #6b7280;
   overflow-wrap: anywhere;
 }
-
 .set-items-label {
   font-size: 0.76rem;
   font-weight: 600;
   color: #8a94a3;
   margin-top: 8px;
 }
-
 .set-items {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
-
 .set-item-chip {
   display: inline-flex;
   align-items: center;
@@ -1298,21 +1269,18 @@ function confirmDelete(): void {
   font-size: 0.74rem;
   color: #4b5563;
 }
-
 .set-item-chip--matched {
   border-color: #17a865;
   background: #f0faf4;
   color: #17a865;
   font-weight: 600;
 }
-
 .set-card-actions {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
   margin-top: 10px;
 }
-
 .edit-btn {
   border: 1px solid #e6e9ee;
   border-radius: 8px;
@@ -1320,7 +1288,6 @@ function confirmDelete(): void {
   font-weight: 600;
   color: #1e6fd9;
 }
-
 .delete-btn {
   border: 1px solid #e6e9ee;
   border-radius: 8px;
@@ -1328,8 +1295,6 @@ function confirmDelete(): void {
   font-weight: 600;
   color: #e5484d;
 }
-
-/* ===== Pagination bar (shared by sets grid + matrix table) ===== */
 .pagination-bar {
   background: #ffffff;
   border: 1px solid #e6e9ee;
@@ -1341,39 +1306,31 @@ function confirmDelete(): void {
   gap: 12px;
   flex-wrap: wrap;
 }
-
 .pagination-info {
   font-size: 0.78rem;
   font-weight: 600;
   color: #6b7280;
   flex: none;
 }
-
 .pagination-nav {
   flex: 1 1 auto;
   display: flex;
   justify-content: center;
 }
-
 .page-size-select {
   width: 140px;
   flex: none;
 }
-
 .page-size-select :deep(.q-field__control) {
   height: 36px;
   min-height: 36px;
 }
-
 .page-size-select :deep(.q-field__marginal) {
   height: 36px;
 }
-
 .page-size-select :deep(.q-field__native) {
   font-size: 0.78rem;
 }
-
-/* ===== Empty state ===== */
 .empty-state {
   background: #ffffff;
   border: 1px dashed #d7dce3;
@@ -1385,31 +1342,25 @@ function confirmDelete(): void {
   gap: 4px;
   text-align: center;
 }
-
 .empty-icon {
   color: #b3bac5;
   margin-bottom: 4px;
 }
-
 .empty-title {
   font-size: 0.9rem;
   font-weight: 700;
   color: #1a1f27;
 }
-
 .empty-sub {
   font-size: 0.78rem;
   color: #8a94a3;
 }
-
 .empty-clear-btn {
   margin-top: 6px;
   font-size: 0.78rem;
   font-weight: 600;
   color: #1e6fd9;
 }
-
-/* ===== Reimbursement matrix header card ===== */
 .matrix-header-card {
   background: #ffffff;
   border: 1px solid #e6e9ee;
@@ -1420,7 +1371,6 @@ function confirmDelete(): void {
   align-items: center;
   gap: 12px;
 }
-
 .matrix-header-icon {
   width: 36px;
   height: 36px;
@@ -1432,44 +1382,37 @@ function confirmDelete(): void {
   justify-content: center;
   flex: none;
 }
-
 .matrix-header-text {
   min-width: 0;
 }
-
 .matrix-header-title {
   font-size: 0.96rem;
   font-weight: 800;
   color: #1a1f27;
   overflow-wrap: anywhere;
 }
-
 .matrix-header-title-en {
   font-weight: 600;
   color: #6b7280;
 }
-
 .matrix-header-sub {
   font-size: 0.78rem;
   color: #1e6fd9;
   margin-top: 2px;
   overflow-wrap: anywhere;
 }
-
 .matrix-header-actions {
   display: flex;
   align-items: center;
   gap: 14px;
   flex: none;
 }
-
 .matrix-header-count {
   font-size: 0.8rem;
   font-weight: 700;
   color: #8a94a3;
   white-space: nowrap;
 }
-
 .matrix-save-btn {
   background: #17a865;
   color: #ffffff;
@@ -1479,63 +1422,45 @@ function confirmDelete(): void {
   padding: 0 16px;
   white-space: nowrap;
 }
-
-/* ===== Reimbursement matrix table (row-mode q-table) =====
-   Bordered cells + a shaded header row, matching the reference tracking
-   table's look. Search box sits in the table's own `top-right` slot, and
-   pagination uses q-table's built-in footer — no separate card/scroll
-   wrapper or custom pagination bar needed anymore. */
 .matrix-qtable {
   background: #ffffff;
   border-radius: 12px;
   overflow: hidden;
 }
-
 .matrix-qtable :deep(.q-table__top) {
   padding: 10px 14px;
   border-bottom: 1px solid #eef0f3;
   flex-wrap: wrap;
   gap: 10px;
 }
-
-/* Same fix as the sets grid's toolbar: without a minimum width, the
-   top-right container can be squeezed by q-table's layout and the search
-   placeholder text gets clipped against the box edge. */
 .matrix-qtable :deep(.q-table__top > div) {
   flex: 1 1 auto;
   min-width: 240px;
 }
-
 .matrix-qtable :deep(.q-table__top-right) {
   justify-content: flex-end;
 }
-
 .matrix-qtable :deep(thead tr) {
   background: #f8f9fb;
 }
-
 .matrix-qtable :deep(thead th) {
   font-size: 0.76rem;
   font-weight: 700;
   color: #1a1f27;
   white-space: normal;
 }
-
 .matrix-qtable :deep(tbody td) {
   vertical-align: middle;
 }
-
 .matrix-qtable :deep(tbody tr:hover) {
   background: #fafbfc;
 }
-
 .matrix-item-title {
   font-size: 0.84rem;
   font-weight: 600;
   color: #1a1f27;
   overflow-wrap: anywhere;
 }
-
 .matrix-item-code {
   font-size: 0.68rem;
   font-weight: 700;
@@ -1543,48 +1468,38 @@ function confirmDelete(): void {
   text-transform: uppercase;
   margin-top: 2px;
 }
-
 .matrix-td-item {
   min-width: 220px;
 }
-
 .matrix-td-rate {
   min-width: 120px;
 }
-
 .matrix-rate-input {
   max-width: 120px;
   margin: 0 auto;
 }
-
 .matrix-rate-input :deep(input) {
   text-align: left;
 }
-
-/* ===== Create/edit dialog ===== */
 .set-dialog {
   width: 100%;
   max-width: 560px;
 }
-
 .set-dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid #eef0f3;
 }
-
 .set-dialog-title {
   font-size: 0.96rem;
   font-weight: 800;
   color: #1a1f27;
 }
-
 .set-dialog-body {
   max-height: 65vh;
   overflow-y: auto;
 }
-
 .dialog-grid {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);
@@ -1592,19 +1507,16 @@ function confirmDelete(): void {
   margin-bottom: 10px;
   align-items: end;
 }
-
 .dialog-code-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-
 .dialog-code-label {
   font-size: 0.72rem;
   font-weight: 600;
   color: #6b7280;
 }
-
 .dialog-code-readonly {
   height: 40px;
   border-radius: 4px;
@@ -1616,28 +1528,20 @@ function confirmDelete(): void {
   align-items: center;
   padding: 0 12px;
 }
-
 .dialog-field {
   margin-bottom: 10px;
 }
-
 .dialog-items-label {
   font-size: 0.8rem;
   font-weight: 700;
   color: #1a1f27;
   margin: 10px 0 8px;
 }
-
-/* Checklist grid: two columns on desktop/tablet, collapses to one on
-   mobile. Checked cards get a positive-colored border and tint so the
-   selection state reads clearly at a glance. Reused for both the
-   create/edit dialog and the "filter by test" menu above the grid. */
 .item-check-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-
 .item-check {
   display: flex;
   align-items: flex-start;
@@ -1651,16 +1555,13 @@ function confirmDelete(): void {
     border-color 0.15s ease,
     background 0.15s ease;
 }
-
 .item-check--checked {
   border-color: #17a865;
   background: #f0faf4;
 }
-
 .item-check :deep(.q-checkbox) {
   margin-top: 2px;
 }
-
 .item-check-label {
   font-size: 0.78rem;
   color: #1a1f27;
@@ -1670,7 +1571,6 @@ function confirmDelete(): void {
   min-width: 0;
   padding-top: 2px;
 }
-
 .dialog-cost-preview {
   display: flex;
   align-items: center;
@@ -1683,22 +1583,17 @@ function confirmDelete(): void {
   font-size: 0.8rem;
   color: #4b5563;
 }
-
 .dialog-cost-preview strong {
   color: #1e6fd9;
   font-size: 0.9rem;
 }
-
 .set-dialog-actions {
   border-top: 1px solid #eef0f3;
 }
-
-/* ===== Delete confirmation dialog ===== */
 .delete-dialog {
   width: 100%;
   max-width: 400px;
 }
-
 .delete-dialog-body {
   display: flex;
   flex-direction: column;
@@ -1707,183 +1602,149 @@ function confirmDelete(): void {
   gap: 6px;
   padding-top: 24px;
 }
-
 .delete-dialog-icon {
   color: #f5a524;
   margin-bottom: 4px;
 }
-
 .delete-dialog-title {
   font-size: 0.96rem;
   font-weight: 800;
   color: #1a1f27;
 }
-
 .delete-dialog-desc {
   font-size: 0.82rem;
   color: #6b7280;
   line-height: 1.5;
 }
-
 .delete-dialog-actions {
   border-top: 1px solid #eef0f3;
 }
-
 .confirm-delete-btn {
   background: #e5484d;
   color: #ffffff;
   font-weight: 700;
 }
-
-/* ===== Tablet (600px–960px) ===== */
+.save-dialog-icon {
+  color: #1e6fd9;
+  margin-bottom: 4px;
+}
 @media (max-width: 960px) {
   .header-card {
     grid-template-columns: 36px minmax(0, 1fr);
     row-gap: 10px;
   }
-
   .header-toggle {
     grid-column: 1 / -1;
     justify-content: flex-start;
   }
-
   .matrix-header-card {
     grid-template-columns: 32px minmax(0, 1fr);
     row-gap: 10px;
   }
-
   .matrix-header-actions {
     grid-column: 1 / -1;
     justify-content: space-between;
     width: 100%;
   }
-
   .matrix-save-btn {
     flex: 1;
   }
 }
-
-/* ===== Mobile (<600px) ===== */
 @media (max-width: 599px) {
   .kits-page {
     padding: 14px 10px 28px;
   }
-
   .header-card {
     padding: 12px 14px;
   }
-
   .matrix-header-card {
     padding: 12px 14px;
   }
-
   .matrix-header-title {
     font-size: 0.86rem;
   }
-
   .matrix-header-title-en {
     display: block;
     font-size: 0.7rem;
     margin-top: 2px;
   }
-
   .matrix-header-sub {
     font-size: 0.72rem;
   }
-
   .header-title {
     font-size: 0.88rem;
   }
-
   .header-title-en {
     display: block;
     font-size: 0.72rem;
     margin-top: 2px;
   }
-
   .header-toggle {
     flex-direction: column;
     align-items: stretch;
   }
-
   .toggle-btn {
     width: 100%;
     justify-content: flex-start;
   }
-
   .section-row {
     flex-direction: column;
     align-items: stretch;
   }
-
   .create-btn {
     width: 100%;
   }
-
   .filter-toolbar {
     flex-direction: column;
     align-items: stretch;
     gap: 8px;
   }
-
   .search-input,
   .filter-btn,
   .clear-filters-btn {
     width: 100%;
     flex: none;
   }
-
   .set-card {
     padding: 14px;
   }
-
   .set-card-top {
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
   }
-
   .set-cost {
     align-items: flex-start;
     text-align: left;
   }
-
   .set-card-actions {
     justify-content: stretch;
   }
-
   .set-card-actions .q-btn {
     flex: 1;
   }
-
   .dialog-grid {
     grid-template-columns: 1fr;
     align-items: stretch;
   }
-
   .item-check-grid {
     grid-template-columns: 1fr;
   }
-
   .item-check-label {
     white-space: normal;
     overflow-wrap: anywhere;
   }
-
   .pagination-bar {
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
   }
-
   .pagination-info {
     text-align: center;
   }
-
   .pagination-nav {
     justify-content: center;
   }
-
   .page-size-select {
     width: 100%;
   }

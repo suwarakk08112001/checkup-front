@@ -463,7 +463,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Notify } from "quasar";
 import * as XLSX from "xlsx";
 import { api } from '@/boot/axios';
@@ -528,6 +528,48 @@ function moveTooltip(event: MouseEvent): void {
 function hideTooltip(): void {
   tooltip.value.visible = false;
 }
+
+/* =========================================================================
+ * Shared draw-in animation (charts + KPIs)
+ *
+ * Both the KPI counters and every chart (bar/hbar height & width growth,
+ * donut/pie sweep) share this easing curve so the whole dashboard "flows
+ * in" together instead of each piece animating at a different pace.
+ * ========================================================================= */
+
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+/** 0 -> 1 progress driving every chart's draw-in animation (bar/hbar
+ *  height & width growth, donut/pie sweep). Charts read this directly in
+ *  their geometry computeds rather than each running their own rAF loop. */
+const chartProgress = ref(0);
+let chartAnimFrame: number | null = null;
+
+function animateCharts(): void {
+  if (chartAnimFrame !== null) cancelAnimationFrame(chartAnimFrame);
+  chartProgress.value = 0;
+  const startTime = performance.now();
+  const duration = 700; // ms
+
+  function step(now: number): void {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed / duration, 1);
+    chartProgress.value = easeOutCubic(t);
+    if (t < 1) {
+      chartAnimFrame = requestAnimationFrame(step);
+    } else {
+      chartAnimFrame = null;
+    }
+  }
+
+  chartAnimFrame = requestAnimationFrame(step);
+}
+
+onBeforeUnmount(() => {
+  if (chartAnimFrame !== null) cancelAnimationFrame(chartAnimFrame);
+});
 
 /* =========================================================================
  * Toolbar: period filter
@@ -636,6 +678,12 @@ const YEAR_SCALE: Readonly<Record<string, number>> = {
 const yearScale = computed<number>(() =>
   fiscalYear.value ? (YEAR_SCALE[fiscalYear.value] ?? 1) : 1
 );
+
+// Replays the draw-in animation whenever the selected year/period changes.
+// The sync-data charts (bar, donut) are driven entirely by activePeriod +
+// fiscalYear, so this alone is enough for them; the API-backed charts
+// (hbar, status pie) get a second trigger below once their data lands.
+watch([activePeriod, fiscalYear], animateCharts, { immediate: true });
 
 /* =========================================================================
  * Underlying per-period datasets
@@ -790,7 +838,7 @@ async function fetchPayStatusTotals(): Promise<void> {
 
   isLoadingPayStatus.value = true;
   try {
-    const res = await api.get<PayStatusTotal[]>("/dashboard/totalPayStatus", {
+    const res = await api.get<PayStatusTotal[]>("/dashboard/totalQuaterPayStatus", {
       params: {
         financialYear: fiscalYear.value,
         quater: toQuaterParam(activePeriod.value)
@@ -877,7 +925,7 @@ async function fetchBenefitTotals(): Promise<void> {
 
   isLoadingBenefitTotals.value = true;
   try {
-    const res = await api.get<BenefitTotal[]>("/dashboard/totalbenefit", {
+    const res = await api.get<BenefitTotal[]>("/dashboard/totalQuaterBenefit", {
       params: {
         financialYear: fiscalYear.value,
         quater: toQuaterParam(activePeriod.value)
@@ -909,6 +957,12 @@ async function fetchBenefitTotals(): Promise<void> {
 
 // Re-fetch whenever the toolbar's year or period changes.
 watch([fiscalYear, activePeriod], fetchBenefitTotals, { immediate: true });
+
+// Re-triggers the draw-in animation once the API-backed datasets (revenue
+// mix / pay status) actually arrive, since those charts would otherwise
+// render at full size before fetchBenefitTotals/fetchPayStatusTotals
+// resolve.
+watch([benefitTotals, payStatusTotals], animateCharts);
 
 // Cycles through the palette so each benefit gets a distinguishable bar
 // color instead of every row rendering in the same COLORS.revenue blue.
@@ -1200,80 +1254,6 @@ const hasBarData = computed(() =>
   units.value.some(u => u.revenue > 0 || u.cost > 0)
 );
 
-/* =========================================================================
- * KPI cards (fully derived from activePeriod)
- * ========================================================================= */
-
-interface Kpi {
-  title: string;
-  value: string;
-  sub: string;
-  icon: string;
-  iconBg: string;
-  iconColor: string;
-  valueColor?: string;
-  chip?: string;
-  chipBg?: string;
-  chipColor?: string;
-  chipMuted?: string;
-}
-
-const kpis = computed<Kpi[]>(() => {
-  const revenue = units.value.reduce((sum, u) => sum + u.revenue, 0);
-  const cost = units.value.reduce((sum, u) => sum + u.cost, 0);
-  const profit = revenue - cost;
-  const margin = revenue ? (profit / revenue) * 100 : 0;
-
-  const paidTotal = statusItems.value
-    .filter(s => s.label === "ชำระเงินครบถ้วน")
-    .reduce((sum, s) => sum + s.amount, 0);
-  const fundPercent = revenue ? Math.round((paidTotal / revenue) * 100) : 0;
-
-  const patients = Math.round(
-    PATIENTS_BY_PERIOD[activePeriod.value] * yearScale.value
-  );
-  const planPercent = PLAN_PERCENT_BY_PERIOD[activePeriod.value];
-
-  return [
-    {
-      title: "รายได้รวมที่คาดหวัง/ได้รับ",
-      value: fmtBaht(revenue),
-      sub: "รวมสิทธิ์ UC, SSS, CSMBS, LGO",
-      icon: "paid",
-      iconBg: "#fdf3dd",
-      iconColor: "#c8940a"
-    },
-    {
-      title: "ต้นทุนรวมการออกหน่วย",
-      value: fmtBaht(cost),
-      sub: "ค่ายา 39% • ค่าแรง 48%",
-      icon: "trending_up",
-      iconBg: "#e6f0fb",
-      iconColor: COLORS.revenue
-    },
-    {
-      title: "กำไรสุทธิ & PROFIT MARGIN",
-      value: fmtBaht(profit),
-      valueColor: COLORS.profit,
-      sub: "ความคุ้มค่าของการจัดบริการสุขภาพเคลื่อนที่",
-      icon: "percent",
-      iconBg: "#e3f7ea",
-      iconColor: COLORS.profit,
-      chip: `${margin.toFixed(1)}% Margin`,
-      chipBg: "#e3f7ea",
-      chipColor: COLORS.profit
-    },
-    {
-      title: "% ได้รับเงินเบิกจ่ายจากกองทุน",
-      value: `${fundPercent}%`,
-      sub: `ผู้รับบริการตรวจจริง ${fmtNum(patients)} คน (${planPercent}% ของแผน)`,
-      icon: "schedule",
-      iconBg: "#f1e9fb",
-      iconColor: COLORS.purple,
-      chipMuted: `(${fmtBaht(paidTotal)})`
-    }
-  ];
-});
 
 /* =========================================================================
  * Bar chart: financial comparison (revenue / cost / profit per trip)
@@ -1340,7 +1320,8 @@ const bars = computed(() => {
       { value: profit, color: COLORS.profit, label: BAR_SERIES_LABELS[2] }
     ];
     series.forEach((s, si) => {
-      const height = (s.value / yMax.value) * barPlotH;
+      const fullHeight = (s.value / yMax.value) * barPlotH;
+      const height = fullHeight * chartProgress.value;
       result.push({
         x: groupX + si * (BAR_CHART.barWidth + BAR_CHART.barGap),
         y: BAR_CHART.marginTop + barPlotH - height,
@@ -1450,14 +1431,26 @@ const donutSlices = computed(() => {
   const items = costBreakdown.value;
   const total = items.reduce((sum, c) => sum + c.value, 0);
   if (!total) return [];
+  // Reveals slices in cumulative order as chartProgress climbs 0 -> 1,
+  // giving the donut a clockwise "sweep in" instead of popping in at
+  // full size.
+  const revealed = total * chartProgress.value;
   let cursor = 0;
 
   return items.map(c => {
-    const startAngle = (cursor / total) * 360;
+    const cursorBefore = cursor;
     cursor += c.value;
-    const endAngle = (cursor / total) * 360;
+    const cursorAfter = cursor;
+    const startAngle = (cursorBefore / total) * 360;
+    const visibleCursorAfter = Math.min(cursorAfter, revealed);
     const percent = total ? (c.value / total) * 100 : 0;
 
+    if (visibleCursorAfter <= cursorBefore) {
+      // Not reached yet at this point in the sweep animation.
+      return { ...c, path: "", percent };
+    }
+
+    const endAngle = (visibleCursorAfter / total) * 360;
     return {
       ...c,
       path: donutArcPath(startAngle, endAngle),
@@ -1543,27 +1536,21 @@ const statusSlices = computed(() => {
   const items = statusItems.value;
   const total = items.reduce((sum, s) => sum + s.count, 0);
   if (!total) return [];
+  // Reveals slices in cumulative order as chartProgress climbs 0 -> 1,
+  // giving the pie a clockwise "sweep in" instead of popping in at full
+  // size. Labels are positioned from the FINAL angle (below) so they
+  // stay put while only the wedge grows.
+  const revealed = total * chartProgress.value;
   let cursor = 0;
 
   return items.map(s => {
-    const startAngle = (cursor / total) * 360;
+    const cursorBefore = cursor;
     cursor += s.count;
-    const endAngle = (cursor / total) * 360;
-    const midAngle = (startAngle + endAngle) / 2;
+    const cursorAfter = cursor;
 
-    const start = polarToCartesian(cx, cy, radius, startAngle);
-    const end = polarToCartesian(cx, cy, radius, endAngle);
-    const largeArc = endAngle - startAngle > 180 ? 1 : 0;
-
-    // A slice that owns the full 360° (only one status this period) has
-    // start === end, so the normal "move to center, line to start, arc
-    // to end" path collapses to zero area and renders nothing. Draw it
-    // as two half-circle arcs back to the same point instead, which SVG
-    // can actually render as a full disc.
-    const isFullCircle = Math.abs(endAngle - startAngle) >= 360;
-    const path = isFullCircle
-      ? `M ${cx} ${cy - radius} A ${radius} ${radius} 0 1 1 ${cx - 0.01} ${cy - radius} Z`
-      : `M ${cx} ${cy} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 1 ${end.x} ${end.y} Z`;
+    const startAngle = (cursorBefore / total) * 360;
+    const fullEndAngle = (cursorAfter / total) * 360;
+    const midAngle = (startAngle + fullEndAngle) / 2;
 
     const labelInner = polarToCartesian(cx, cy, radius + 6, midAngle);
     const labelOuter = polarToCartesian(cx, cy, radius + 26, midAngle);
@@ -1573,9 +1560,8 @@ const statusSlices = computed(() => {
     const lines = splitLabel(s.label);
     lines[lines.length - 1] = `${lines[lines.length - 1]}: ${s.count} รอบ`;
 
-    return {
+    const base = {
       ...s,
-      path,
       labelLines: lines,
       labelLine: {
         x1: labelInner.x,
@@ -1589,6 +1575,29 @@ const statusSlices = computed(() => {
         anchor: isRight ? "start" : "end"
       }
     };
+
+    const visibleCursorAfter = Math.min(cursorAfter, revealed);
+    if (visibleCursorAfter <= cursorBefore) {
+      // Not reached yet at this point in the sweep animation.
+      return { ...base, path: "" };
+    }
+
+    const drawEndAngle = (visibleCursorAfter / total) * 360;
+    const start = polarToCartesian(cx, cy, radius, startAngle);
+    const end = polarToCartesian(cx, cy, radius, drawEndAngle);
+    const largeArc = drawEndAngle - startAngle > 180 ? 1 : 0;
+
+    // A slice that (once fully revealed) owns the full 360° has
+    // start === end, so the normal "move to center, line to start, arc
+    // to end" path collapses to zero area and renders nothing. Draw it
+    // as two half-circle arcs back to the same point instead, which SVG
+    // can actually render as a full disc.
+    const isFullCircle = Math.abs(drawEndAngle - startAngle) >= 359.99;
+    const path = isFullCircle
+      ? `M ${cx} ${cy - radius} A ${radius} ${radius} 0 1 1 ${cx - 0.01} ${cy - radius} Z`
+      : `M ${cx} ${cy} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 1 ${end.x} ${end.y} Z`;
+
+    return { ...base, path };
   });
 });
 
@@ -1611,6 +1620,165 @@ function onStatusLeave(): void {
   hideTooltip();
 }
 
+/* =========================================================================
+ * KPI cards (fully derived from activePeriod)
+ * ========================================================================= */
+
+interface Kpi {
+  title: string;
+  value: string;
+  sub: string;
+  icon: string;
+  iconBg: string;
+  iconColor: string;
+  valueColor?: string;
+  chip?: string;
+  chipBg?: string;
+  chipColor?: string;
+  chipMuted?: string;
+}
+
+/** เหมือน Kpi แต่เก็บ "ค่าตัวเลขจริง" (targetValue) + ฟังก์ชัน format
+ *  แทนที่จะเก็บ string ที่ format แล้ว เพื่อให้ animation loop ด้านล่าง
+ *  เอาไปคำนวณค่าระหว่างทาง (0 -> targetValue) แล้ว format ใหม่ทุกเฟรมได้ */
+interface KpiRaw {
+  title: string;
+  targetValue: number;
+  format: (n: number) => string;
+  sub: string;
+  icon: string;
+  iconBg: string;
+  iconColor: string;
+  valueColor?: string;
+  chip?: string;
+  chipBg?: string;
+  chipColor?: string;
+  chipMuted?: string;
+}
+
+const kpisRaw = computed<KpiRaw[]>(() => {
+  const revenue = units.value.reduce((sum, u) => sum + u.revenue, 0);
+  const cost = units.value.reduce((sum, u) => sum + u.cost, 0);
+  const profit = revenue - cost;
+  const margin = revenue ? (profit / revenue) * 100 : 0;
+
+  const paidTotal = statusItems.value
+    .filter(s => s.label === "ชำระเงินครบถ้วน")
+    .reduce((sum, s) => sum + s.amount, 0);
+  const fundPercent = revenue ? Math.round((paidTotal / revenue) * 100) : 0;
+
+  const patients = Math.round(
+    PATIENTS_BY_PERIOD[activePeriod.value] * yearScale.value
+  );
+  const planPercent = PLAN_PERCENT_BY_PERIOD[activePeriod.value];
+
+  return [
+    {
+      title: "รายได้รวมที่คาดหวัง/ได้รับ",
+      targetValue: revenue,
+      format: fmtBaht,
+      sub: "รวมสิทธิ์ UC, SSS, CSMBS, LGO",
+      icon: "paid",
+      iconBg: "#fdf3dd",
+      iconColor: "#c8940a"
+    },
+    {
+      title: "ต้นทุนรวมการออกหน่วย",
+      targetValue: cost,
+      format: fmtBaht,
+      sub: "ค่ายา 39% • ค่าแรง 48%",
+      icon: "trending_up",
+      iconBg: "#e6f0fb",
+      iconColor: COLORS.revenue
+    },
+    {
+      title: "กำไรสุทธิ & PROFIT MARGIN",
+      targetValue: profit,
+      format: fmtBaht,
+      valueColor: COLORS.profit,
+      sub: "ความคุ้มค่าของการจัดบริการสุขภาพเคลื่อนที่",
+      icon: "percent",
+      iconBg: "#e3f7ea",
+      iconColor: COLORS.profit,
+      chip: `${margin.toFixed(1)}% Margin`,
+      chipBg: "#e3f7ea",
+      chipColor: COLORS.profit
+    },
+    {
+      title: "% ได้รับเงินเบิกจ่ายจากกองทุน",
+      targetValue: fundPercent,
+      format: (n: number) => `${Math.round(n)}%`,
+      sub: `ผู้รับบริการตรวจจริง ${fmtNum(patients)} คน (${planPercent}% ของแผน)`,
+      icon: "schedule",
+      iconBg: "#f1e9fb",
+      iconColor: COLORS.purple,
+      chipMuted: `(${fmtBaht(paidTotal)})`
+    }
+  ];
+});
+
+/* ---------------- Count-up animation ---------------- */
+// Reuses the shared easeOutCubic() defined earlier alongside chartProgress.
+
+const animatedKpiValues = ref<number[]>([]);
+
+let kpiAnimFrame: number | null = null;
+
+function animateKpis(targets: number[]): void {
+  if (kpiAnimFrame !== null) cancelAnimationFrame(kpiAnimFrame);
+
+  const startValues = targets.map((_, i) => animatedKpiValues.value[i] ?? 0);
+  const startTime = performance.now();
+  const duration = 900; // ms
+
+  function step(now: number): void {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed / duration, 1);
+    const eased = easeOutCubic(t);
+
+    animatedKpiValues.value = targets.map(
+      (target, i) => (startValues[i] ?? 0) + (target - (startValues[i] ?? 0)) * eased
+    );
+
+    if (t < 1) {
+      kpiAnimFrame = requestAnimationFrame(step);
+    } else {
+      kpiAnimFrame = null;
+    }
+  }
+
+  kpiAnimFrame = requestAnimationFrame(step);
+}
+
+// วิ่งใหม่ทุกครั้งที่ค่าที่คำนวณจาก activePeriod/fiscalYear เปลี่ยน
+// (รวมถึงครั้งแรกที่โหลดหน้า เพราะ animatedKpiValues เริ่มจากค่าว่าง = 0)
+watch(
+  kpisRaw,
+  raw => animateKpis(raw.map(k => k.targetValue)),
+  { immediate: true }
+);
+
+onBeforeUnmount(() => {
+  if (kpiAnimFrame !== null) cancelAnimationFrame(kpiAnimFrame);
+});
+
+// ตัวที่ template ใช้จริง (v-for="k in kpis") — format ตัวเลขที่กำลังวิ่งอยู่
+// ด้วย format function ของ KPI นั้นๆ ในทุกเฟรม
+const kpis = computed<Kpi[]>(() =>
+  kpisRaw.value.map((k, i) => ({
+    title: k.title,
+    value: k.format(animatedKpiValues.value[i] ?? 0),
+    sub: k.sub,
+    icon: k.icon,
+    iconBg: k.iconBg,
+    iconColor: k.iconColor,
+    valueColor: k.valueColor,
+    chip: k.chip,
+    chipBg: k.chipBg,
+    chipColor: k.chipColor,
+    chipMuted: k.chipMuted
+  }))
+);
 /* =========================================================================
  * Horizontal bar chart: revenue mix
  * ========================================================================= */
@@ -1661,7 +1829,8 @@ const hbars = computed(() => {
     const rowY = HBAR_CHART.marginTop + i * rowH;
     const barY = rowY + (rowH - HBAR_CHART.barThickness) / 2;
     const rawWidth = (r.value / hbarMax.value) * hbarPlotW;
-    const width = Math.max(rawWidth, HBAR_MIN_WIDTH);
+    const targetWidth = Math.max(rawWidth, HBAR_MIN_WIDTH);
+    const width = targetWidth * chartProgress.value;
     return {
       label: r.label,
       value: r.value,
@@ -1853,6 +2022,7 @@ function onHbarLeave(): void {
   font-weight: 800;
   color: #1a1f27;
   line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-chip {
